@@ -1,29 +1,16 @@
-<script setup></script>
-
 <template>
-  <header>
-    <div class="wrapper">
-      <h1>Qlinic</h1>
-    </div>
-  </header>
+  <div id="nav">
+    <router-link to="/">Main</router-link> |
+    <router-link to="/appointment-booking">Appointment Booking</router-link> |
+    <router-link to="/appointment-details">Appointment Details</router-link> |
+    <router-link to="/history">History</router-link> |
+    <router-link to="/personal-details">Personal Details</router-link> |
+  </div>
+  <RouterView />
 </template>
 
-<style scoped>
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
-}
-</style>
+<script>
+export default {
+  name: "App",
+};
+</script>
