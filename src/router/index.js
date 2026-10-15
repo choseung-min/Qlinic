@@ -4,12 +4,24 @@ import AppointmentDetails from "@/views/patient/AppointmentDetails.vue";
 import History from "@/views/patient/History.vue";
 import Main from "@/views/patient/Main.vue";
 import PersonalDetails from "@/views/patient/PersonalDetails.vue";
+import Login from "@/views/auth/Login.vue";
+import StaffMain from "@/views/staff/Main.vue";
 
 const routes = [
   {
     path: "/",
     name: "Main",
     component: Main,
+  },
+  {
+    path: "/login",
+    name: "Login",
+    component: Login,
+  },
+  {
+    path: "/staff",
+    name: "StaffMain",
+    component: StaffMain,
   },
   {
     path: "/appointment-booking",
