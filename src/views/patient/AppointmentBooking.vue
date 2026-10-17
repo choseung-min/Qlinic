@@ -210,9 +210,10 @@ async function loadDoctors() {
 
   try {
     doctors.value = await getActiveDoctors();
+    console.log("Doctors in Vue state:", doctors.value);
   } catch (error) {
-    console.error("Unable to load doctors.", error);
-    doctorsError.value = "Unable to load doctors. Please try again later.";
+    console.error("Unable to load doctors:", error.code, error.message, error);
+    doctorsError.value = `Unable to load doctors (${error.code || "unknown error"}).`;
   } finally {
     isLoadingDoctors.value = false;
   }
@@ -235,9 +236,13 @@ async function loadAvailability() {
       appointmentDate: selectedDate.value,
     });
   } catch (error) {
-    console.error("Unable to load appointment availability.", error);
-    availabilityError.value =
-      "Unable to load availability. Please try again later.";
+    console.error(
+      "Unable to load appointment availability:",
+      error.code,
+      error.message,
+      error,
+    );
+    availabilityError.value = `Unable to load availability (${error.code || "unknown error"}).`;
   } finally {
     isLoadingAvailability.value = false;
   }

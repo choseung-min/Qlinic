@@ -71,23 +71,32 @@ export async function createAppointment({
     .where("appointmentDate", "==", appointmentDate)
     .where("appointmentTime", "==", appointmentTime)
     .where("status", "==", "booked");
-  const appointmentRef = appointmentCollection.doc();
+  const slotId = `${doctorId}_${appointmentDate}_${appointmentTime.replace(":", "-")}`;
+  const appointmentRef = appointmentCollection.doc(slotId);
+
+  const [doctorSnapshot, slotSnapshot, duplicateSnapshot] = await Promise.all([
+    doctorRef.get(),
+    slotQuery.get(),
+    duplicateQuery.get(),
+  ]);
+
+  if (!doctorSnapshot.exists || doctorSnapshot.data()?.active !== true) {
+    throw createAppointmentError("invalid-doctor");
+  }
+
+  if (!slotSnapshot.empty) {
+    throw createAppointmentError("slot-taken");
+  }
+
+  if (!duplicateSnapshot.empty) {
+    throw createAppointmentError("duplicate-booking");
+  }
 
   await db.runTransaction(async (transaction) => {
-    const doctorSnapshot = await transaction.get(doctorRef);
-    const slotSnapshot = await transaction.get(slotQuery);
-    const duplicateSnapshot = await transaction.get(duplicateQuery);
+    const existingSlot = await transaction.get(appointmentRef);
 
-    if (!doctorSnapshot.exists || doctorSnapshot.data()?.active !== true) {
-      throw createAppointmentError("invalid-doctor");
-    }
-
-    if (!slotSnapshot.empty) {
+    if (existingSlot.exists) {
       throw createAppointmentError("slot-taken");
-    }
-
-    if (!duplicateSnapshot.empty) {
-      throw createAppointmentError("duplicate-booking");
     }
 
     transaction.set(appointmentRef, {
