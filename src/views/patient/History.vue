@@ -73,7 +73,7 @@ export default {
       this.selectedId = null;
 
       try {
-        // retrieve appointments belonging to the logged-in patient
+        // 7A retrieve appointments for the logged-in patient
         const snapshot = await db.collection('appointments')
           .where('patientId', '==', patientId)
           .get();
@@ -83,7 +83,6 @@ export default {
         snapshot.forEach((doc) => {
           const appointment = doc.data();
 
-          // only display completed and cancelled appointments
           if (appointment.status === 'completed' ||
             appointment.status === 'cancelled') {
 
@@ -93,7 +92,12 @@ export default {
               reason: appointment.reason,
               date: appointment.date,
               time: appointment.time,
-              status: appointment.status
+              status: appointment.status,
+
+              // 7C additional consultation details
+              outcome: appointment.outcome,
+              diagnosis: appointment.diagnosis,
+              medication: appointment.medication
             });
           }
         });
@@ -115,7 +119,10 @@ export default {
           this.errorMessage = 'unable to load appointment history';
         }
       } finally {
-        this.loading = false;
+        // check if patient is still the curr logged in one safety precaution
+        if (auth.currentUser && auth.currentUser.uid === patientId) {
+          this.loading = false;
+        }
       }
     },
 
@@ -134,6 +141,7 @@ export default {
 .history-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
   gap: 16px;
 }
 

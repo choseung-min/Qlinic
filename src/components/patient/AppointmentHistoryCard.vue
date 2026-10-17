@@ -1,6 +1,6 @@
 <template>
-    <div class="history-card" :class="{ 'is-selected': selected }" role="button" tabindex="0" @click="selectCard"
-        @keydown.enter="selectCard" @keydown.space.prevent="selectCard">
+    <div class="history-card" :class="{ 'is-selected': selected }" role="button" tabindex="0" :aria-expanded="selected"
+        @click="selectCard" @keydown.enter="selectCard" @keydown.space.prevent="selectCard">
         <div class="card-topline">
             <p v-if="appointment.status === 'completed'" class="status-badge status-completed">
                 Completed
@@ -22,6 +22,38 @@
         <div class="appointment-schedule">
             <p>{{ formatDate(appointment.date) }}</p>
             <p>{{ appointment.time || 'Time unavailable' }}</p>
+        </div>
+
+        <!-- 7C display details when the card is selected -->
+        <div v-if="selected" class="appointment-details">
+
+            <div v-if="appointment.status === 'completed'">
+                <h3>Consultation Details</h3>
+
+                <p>
+                    <strong>Outcome:</strong>
+                    {{ appointment.outcome || 'Not available' }}
+                </p>
+
+                <p>
+                    <strong>Diagnosis:</strong>
+                    {{ appointment.diagnosis || 'Not available' }}
+                </p>
+
+                <p>
+                    <strong>Medication:</strong>
+                    {{ appointment.medication || 'Not available' }}
+                </p>
+            </div>
+
+            <div v-else>
+                <h3>Appointment Details</h3>
+                <p>
+                    This appointment was cancelled
+                    No consultation details are available
+                </p>
+            </div>
+
         </div>
     </div>
 </template>
@@ -119,6 +151,10 @@ export default {
     font-size: 24px;
 }
 
+.is-selected .chevron {
+    transform: rotate(90deg);
+}
+
 .doctor-name {
     font-size: 15px;
     font-weight: 600;
@@ -141,5 +177,30 @@ export default {
     gap: 16px;
     margin-top: auto;
     padding-top: 8px;
+}
+
+/* 7C expanded card details */
+.appointment-details {
+    border-top: 1px solid var(--color-border);
+    margin-top: 12px;
+    padding-top: 16px;
+    width: 100%;
+}
+
+.appointment-details h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+.appointment-details p {
+    color: #5d6d83;
+    font-size: 13px;
+    margin-bottom: 8px;
+    overflow-wrap: anywhere;
+}
+
+.appointment-details strong {
+    color: var(--color-text);
 }
 </style>
