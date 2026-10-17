@@ -10,7 +10,11 @@
       <form novalidate @submit.prevent="handleSubmit">
         <div class="field-group">
           <label for="doctor">Doctor</label>
-          <select id="doctor" v-model="selectedDoctor">
+          <select
+            id="doctor"
+            v-model="selectedDoctor"
+            :disabled="isLoadingDoctors"
+          >
             <option disabled value="">Select a doctor</option>
             <option
               v-for="doctor in doctors"
@@ -20,6 +24,12 @@
               {{ doctor.name }}
             </option>
           </select>
+          <p v-if="isLoadingDoctors" class="status-message">
+            Loading doctors...
+          </p>
+          <p v-if="doctorsError" class="field-error" role="alert">
+            {{ doctorsError }}
+          </p>
           <p v-if="errors.doctor" class="field-error" role="alert">
             {{ errors.doctor }}
           </p>
@@ -46,12 +56,27 @@
               v-for="slot in timeSlots"
               :key="slot"
               :class="{ selected: selectedTimeSlot === slot }"
+              :disabled="bookedTimeSlots.has(slot) || isLoadingAvailability"
               type="button"
               @click="selectTimeSlot(slot)"
             >
               {{ slot }}
             </button>
           </div>
+          <p v-if="isLoadingAvailability" class="status-message">
+            Checking availability...
+          </p>
+          <p v-else-if="availabilityError" class="field-error" role="alert">
+            {{ availabilityError }}
+          </p>
+          <p
+            v-else-if="
+              selectedDoctor && selectedDate && !availableTimeSlots.length
+            "
+            class="status-message"
+          >
+            No time slots are available for this date.
+          </p>
           <p v-if="errors.time" class="field-error" role="alert">
             {{ errors.time }}
           </p>
@@ -86,13 +111,11 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { getBookedTimeSlots } from "@/services/appointmentService";
+import { getActiveDoctors } from "@/services/doctorService";
 
-const doctors = [
-  { id: "sample-sarah-lim", name: "Dr. Sarah Lim" },
-  { id: "sample-daniel-tan", name: "Dr. Daniel Tan" },
-  { id: "sample-emily-wong", name: "Dr. Emily Wong" },
-];
+const doctors = ref([]);
 
 const timeSlots = [
   "09:00",
@@ -116,6 +139,11 @@ const selectedDoctor = ref("");
 const selectedDate = ref("");
 const selectedTimeSlot = ref("");
 const reasonForVisit = ref("");
+const bookedTimeSlots = ref(new Set());
+const isLoadingDoctors = ref(true);
+const isLoadingAvailability = ref(false);
+const doctorsError = ref("");
+const availabilityError = ref("");
 const successMessage = ref("");
 const submissionError = ref("");
 const errors = reactive({ doctor: "", date: "", time: "", reason: "" });
@@ -131,7 +159,12 @@ const isFormValid = computed(
     Boolean(selectedDoctor.value) &&
     isFutureDate(selectedDate.value) &&
     Boolean(selectedTimeSlot.value) &&
+    !bookedTimeSlots.value.has(selectedTimeSlot.value) &&
     Boolean(reasonForVisit.value),
+);
+
+const availableTimeSlots = computed(() =>
+  timeSlots.filter((slot) => !bookedTimeSlots.value.has(slot)),
 );
 
 function formatDate(date) {
@@ -151,8 +184,51 @@ function clearTimeSlot() {
 }
 
 function selectTimeSlot(slot) {
+  if (bookedTimeSlots.value.has(slot)) {
+    return;
+  }
+
   selectedTimeSlot.value = slot;
   errors.time = "";
+}
+
+async function loadDoctors() {
+  isLoadingDoctors.value = true;
+  doctorsError.value = "";
+
+  try {
+    doctors.value = await getActiveDoctors();
+  } catch (error) {
+    console.error("Unable to load doctors.", error);
+    doctorsError.value = "Unable to load doctors. Please try again later.";
+  } finally {
+    isLoadingDoctors.value = false;
+  }
+}
+
+async function loadAvailability() {
+  clearTimeSlot();
+  bookedTimeSlots.value = new Set();
+  availabilityError.value = "";
+
+  if (!selectedDoctor.value || !isFutureDate(selectedDate.value)) {
+    return;
+  }
+
+  isLoadingAvailability.value = true;
+
+  try {
+    bookedTimeSlots.value = await getBookedTimeSlots({
+      doctorId: selectedDoctor.value,
+      appointmentDate: selectedDate.value,
+    });
+  } catch (error) {
+    console.error("Unable to load appointment availability.", error);
+    availabilityError.value =
+      "Unable to load availability. Please try again later.";
+  } finally {
+    isLoadingAvailability.value = false;
+  }
 }
 
 function validateForm() {
@@ -179,6 +255,9 @@ function handleSubmit() {
 
   successMessage.value = "Your booking details are ready to confirm.";
 }
+
+watch([selectedDoctor, selectedDate], loadAvailability);
+onMounted(loadDoctors);
 </script>
 
 <style scoped>
@@ -269,6 +348,15 @@ textarea {
   color: var(--color-primary-dark);
 }
 
+.time-grid button:disabled {
+  background: var(--color-background);
+  border-color: var(--color-border);
+  color: #a0aec0;
+  cursor: not-allowed;
+  opacity: 1;
+  text-decoration: line-through;
+}
+
 .confirm-button {
   width: 100%;
 }
@@ -280,6 +368,12 @@ button:disabled {
 
 .field-error {
   color: #b42318;
+  font-size: 13px;
+  margin: 0;
+}
+
+.status-message {
+  color: var(--color-text-muted);
   font-size: 13px;
   margin: 0;
 }
