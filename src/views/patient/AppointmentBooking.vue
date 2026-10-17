@@ -102,8 +102,12 @@
           {{ submissionError }}
         </p>
 
-        <button class="confirm-button" :disabled="!isFormValid" type="submit">
-          Confirm Booking
+        <button
+          class="confirm-button"
+          :disabled="!isFormValid || isSubmitting || isLoadingAvailability"
+          type="submit"
+        >
+          {{ isSubmitting ? "Booking..." : "Confirm Booking" }}
         </button>
       </form>
     </section>
@@ -112,8 +116,15 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { getBookedTimeSlots } from "@/services/appointmentService";
+import { useRouter } from "vue-router";
+import {
+  createAppointment,
+  getBookedTimeSlots,
+} from "@/services/appointmentService";
 import { getActiveDoctors } from "@/services/doctorService";
+import { auth } from "@/services/firebase";
+
+const router = useRouter();
 
 const doctors = ref([]);
 
@@ -146,6 +157,7 @@ const doctorsError = ref("");
 const availabilityError = ref("");
 const successMessage = ref("");
 const submissionError = ref("");
+const isSubmitting = ref(false);
 const errors = reactive({ doctor: "", date: "", time: "", reason: "" });
 
 const minimumDate = computed(() => {
@@ -245,7 +257,7 @@ function validateForm() {
   return !Object.values(errors).some(Boolean);
 }
 
-function handleSubmit() {
+async function handleSubmit() {
   successMessage.value = "";
   submissionError.value = "";
 
@@ -253,7 +265,53 @@ function handleSubmit() {
     return;
   }
 
-  successMessage.value = "Your booking details are ready to confirm.";
+  const patientId = auth.currentUser?.uid;
+
+  if (!patientId) {
+    submissionError.value = "Your session has expired. Please sign in again.";
+    return;
+  }
+
+  isSubmitting.value = true;
+
+  try {
+    await createAppointment({
+      patientId,
+      doctorId: selectedDoctor.value,
+      appointmentDate: selectedDate.value,
+      appointmentTime: selectedTimeSlot.value,
+      reasonForVisit: reasonForVisit.value,
+    });
+
+    successMessage.value = "Appointment booked successfully.";
+    window.setTimeout(() => router.push({ name: "Main" }), 800);
+  } catch (error) {
+    console.error("Unable to create appointment.", error);
+    submissionError.value = getBookingErrorMessage(error);
+
+    if (error.code === "slot-taken") {
+      await loadAvailability();
+    }
+  } finally {
+    isSubmitting.value = false;
+  }
+}
+
+function getBookingErrorMessage(error) {
+  const messages = {
+    "duplicate-booking": "You have already booked this appointment.",
+    "invalid-date": "Please choose a date after today.",
+    "invalid-doctor": "That doctor is no longer available.",
+    "invalid-reason": "Please enter a reason for your visit.",
+    "invalid-time-slot": "Please choose a valid time slot.",
+    "slot-taken": "That time slot was just booked. Please choose another.",
+    unauthenticated: "Please sign in before booking an appointment.",
+  };
+
+  return (
+    messages[error.code] ||
+    "Unable to create your appointment. Please try again."
+  );
 }
 
 watch([selectedDoctor, selectedDate], loadAvailability);
