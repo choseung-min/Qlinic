@@ -9,6 +9,9 @@
       <div>
         <h2 id="queue-title">Not currently in the queue</h2>
         <p>Join the walk-in queue remotely, no need to wait at the clinic.</p>
+        <p v-if="queueMessage" class="success-message" role="status">
+          {{ queueMessage }}
+        </p>
         <p v-if="queueError" class="error-message" role="alert">
           {{ queueError }}
         </p>
@@ -24,11 +27,14 @@
 <script setup>
 import { ref } from "vue";
 import { auth } from "@/services/firebase";
+import { joinWalkInQueue } from "@/services/queueService";
 
 const isJoining = ref(false);
+const queueMessage = ref("");
 const queueError = ref("");
 
 async function handleJoinQueue() {
+  queueMessage.value = "";
   queueError.value = "";
 
   if (!auth.currentUser?.uid) {
@@ -39,12 +45,16 @@ async function handleJoinQueue() {
   isJoining.value = true;
 
   try {
-    await Promise.resolve();
-    queueError.value =
-      "Queue joining is not available yet. Please try again shortly.";
+    const visit = await joinWalkInQueue(auth.currentUser.uid);
+    queueMessage.value = visit.alreadyJoined
+      ? "You are already in today's walk-in queue."
+      : "You have joined today's walk-in queue.";
   } catch (error) {
-    console.error("Unable to join the walk-in queue.", error);
-    queueError.value = "Unable to join the queue. Please try again.";
+    console.error("Unable to join the walk-in queue:", error);
+    queueError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to join the queue."
+        : "Unable to join the queue. Please try again.";
   } finally {
     isJoining.value = false;
   }
@@ -82,6 +92,14 @@ async function handleJoinQueue() {
 .error-message {
   color: #b42318 !important;
   margin-top: 10px !important;
+}
+
+.success-message {
+  background: var(--color-primary-soft);
+  border-radius: 7px;
+  color: var(--color-primary-dark) !important;
+  margin-top: 12px !important;
+  padding: 9px 11px;
 }
 
 button:disabled {
