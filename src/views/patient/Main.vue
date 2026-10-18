@@ -5,6 +5,8 @@
       <p>Here's what's happening with your visits today.</p>
     </header>
 
+    <PatientReminders />
+
     <p v-if="isInitializingQueue" class="status-message" role="status">
       Checking your queue status...
     </p>
@@ -78,6 +80,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth } from "@/services/firebase";
+import PatientReminders from "@/components/patient/PatientReminders.vue";
 import {
   joinWalkInQueue,
   leaveWalkInQueue,
