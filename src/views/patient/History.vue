@@ -80,27 +80,38 @@ export default {
 
         const pastAppointments = [];
 
-        snapshot.forEach((doc) => {
+        for (const doc of snapshot.docs) {
           const appointment = doc.data();
 
           if (appointment.status === 'completed' ||
             appointment.status === 'cancelled') {
 
+            // retrieve doctor's name from the doctors collection
+            let doctorName = 'Doctor unavailable';
+
+            if (appointment.doctorId) {
+              const doctorDoc = await db.collection('doctors')
+                .doc(appointment.doctorId)
+                .get();
+
+              if (doctorDoc.exists) {
+                doctorName = doctorDoc.data().name;
+              }
+            }
+
             pastAppointments.push({
               id: doc.id,
-              doctorName: appointment.doctorName,
-              reason: appointment.reason,
-              date: appointment.date,
-              time: appointment.time,
+              doctorName: doctorName,
+              reason: appointment.reasonForVisit,
+              date: appointment.appointmentDate,
+              time: appointment.appointmentTime,
               status: appointment.status,
-
-              // 7C additional consultation details
               outcome: appointment.outcome,
               diagnosis: appointment.diagnosis,
               medication: appointment.medication
             });
           }
-        });
+        }
 
         // display most recent appointments first
         pastAppointments.sort((a, b) => {
