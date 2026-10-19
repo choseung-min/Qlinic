@@ -72,12 +72,44 @@
         {{ isJoining ? "Joining..." : "Join Queue" }}
       </button>
     </section>
+
+    <section class="appointments-section" aria-labelledby="upcoming-title">
+      <div class="section-heading">
+        <h2 id="upcoming-title">Upcoming Appointments</h2>
+        <router-link to="/history">View History</router-link>
+      </div>
+
+      <p v-if="isLoadingAppointments" class="status-message" role="status">
+        Loading appointments...
+      </p>
+      <p v-else-if="appointmentsError" class="error-message" role="alert">
+        {{ appointmentsError }}
+      </p>
+      <p v-else-if="!upcomingAppointments.length" class="empty-message">
+        You have no upcoming appointments.
+      </p>
+      <div v-else class="appointments-grid">
+        <article
+          v-for="appointment in upcomingAppointments"
+          :key="appointment.id"
+          class="appointment-card"
+        >
+          <div class="appointment-topline">
+            <span class="appointment-status">{{ appointment.status }}</span>
+            <span>{{ formatAppointmentDate(appointment.date) }}</span>
+          </div>
+          <h3>{{ appointment.doctorName }}</h3>
+          <p>{{ appointment.reason }}</p>
+          <strong>{{ formatAppointmentTime(appointment.time) }}</strong>
+        </article>
+      </div>
+    </section>
   </main>
 </template>
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { auth } from "@/services/firebase";
+import { auth, db } from "@/services/firebase";
 import {
   joinWalkInQueue,
   leaveWalkInQueue,
@@ -87,9 +119,12 @@ import {
 
 const isJoining = ref(false);
 const isLeaving = ref(false);
+const isLoadingAppointments = ref(true);
 const isInitializingQueue = ref(true);
+const upcomingAppointments = ref([]);
 const currentVisit = ref(null);
 const waitingVisits = ref([]);
+const appointmentsError = ref("");
 const queueError = ref("");
 let stopActiveVisitListener;
 let stopWaitingQueueListener;
@@ -110,6 +145,92 @@ const queuePosition = computed(() =>
 );
 
 const estimatedWait = computed(() => patientsAhead.value * 15);
+
+async function loadUpcomingAppointments(patientId) {
+  isLoadingAppointments.value = true;
+  appointmentsError.value = "";
+
+  try {
+    const snapshot = await db
+      .collection("appointments")
+      .where("patientId", "==", patientId)
+      .get();
+    const today = getLocalDate();
+
+    const appointments = await Promise.all(
+      snapshot.docs
+        .map((document) => ({ id: document.id, ...document.data() }))
+        .filter(
+          (appointment) =>
+            appointment.appointmentDate >= today &&
+            appointment.status === "booked",
+        )
+        .map(async (appointment) => {
+          const doctorSnapshot = appointment.doctorId
+            ? await db.collection("doctors").doc(appointment.doctorId).get()
+            : null;
+
+          return {
+            id: appointment.id,
+            doctorName: doctorSnapshot?.exists
+              ? doctorSnapshot.data()?.name || "Doctor unavailable"
+              : "Doctor unavailable",
+            reason: appointment.reasonForVisit || "No reason provided",
+            date: appointment.appointmentDate,
+            time: appointment.appointmentTime,
+            status: appointment.status,
+          };
+        }),
+    );
+
+    appointments.sort((firstAppointment, secondAppointment) =>
+      `${firstAppointment.date}${firstAppointment.time}`.localeCompare(
+        `${secondAppointment.date}${secondAppointment.time}`,
+      ),
+    );
+    upcomingAppointments.value = appointments;
+  } catch (error) {
+    console.error("Unable to load upcoming appointments.", error);
+    appointmentsError.value = "Unable to load upcoming appointments.";
+    upcomingAppointments.value = [];
+  } finally {
+    isLoadingAppointments.value = false;
+  }
+}
+
+function getLocalDate() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatAppointmentDate(dateValue) {
+  if (!dateValue) {
+    return "Date unavailable";
+  }
+
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("en-SG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatAppointmentTime(timeValue) {
+  if (!timeValue) {
+    return "Time unavailable";
+  }
+
+  const [hours, minutes] = timeValue.split(":").map(Number);
+  const time = new Date();
+  time.setHours(hours, minutes, 0, 0);
+  return time.toLocaleTimeString("en-SG", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function formatQueueNumber(queueNumber) {
   return String(queueNumber).padStart(2, "0");
@@ -228,12 +349,15 @@ onMounted(() => {
     stopWaitingQueueListener?.();
 
     if (!user) {
+      upcomingAppointments.value = [];
+      isLoadingAppointments.value = false;
       isInitializingQueue.value = false;
       queueError.value = "Please sign in before viewing your queue.";
       return;
     }
 
     console.log("Queue auth user:", user.uid);
+    loadUpcomingAppointments(user.uid);
     startActiveVisitListener(user.uid);
   });
 });
@@ -248,6 +372,89 @@ onUnmounted(() => {
 <style scoped>
 .dashboard-page {
   max-width: 900px;
+}
+
+.appointments-section {
+  margin: 28px 0 32px;
+}
+
+.section-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.section-heading a {
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.section-heading a:hover {
+  text-decoration: underline;
+}
+
+.appointments-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.appointment-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.appointment-card h3,
+.appointment-card p {
+  margin: 0;
+}
+
+.appointment-card h3 {
+  font-size: 16px;
+}
+
+.appointment-card p {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.appointment-card strong {
+  font-size: 14px;
+}
+
+.appointment-topline {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+}
+
+.appointment-status {
+  background: var(--color-primary-soft);
+  border-radius: 4px;
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  padding: 4px 8px;
+  text-transform: capitalize;
+}
+
+.empty-message {
+  color: var(--color-text-muted);
+  font-size: 13px;
 }
 
 .queue-card {
@@ -389,6 +596,10 @@ button:disabled {
 }
 
 @media (max-width: 560px) {
+  .appointments-grid {
+    grid-template-columns: 1fr;
+  }
+
   .queue-card {
     align-items: flex-start;
     flex-direction: column;
