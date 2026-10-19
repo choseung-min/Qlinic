@@ -8,18 +8,15 @@
       </button>
 
       <div class="detail-card">
-        <p v-if="selectedAppointment.status === 'booked'"
-           class="status-badge status-booked">
+        <p v-if="selectedAppointment.status === 'booked'" class="status-badge status-booked">
           Booked
         </p>
 
-        <p v-else-if="selectedAppointment.status === 'completed'"
-           class="status-badge status-completed">
+        <p v-else-if="selectedAppointment.status === 'completed'" class="status-badge status-completed">
           Completed
         </p>
 
-        <p v-else-if="selectedAppointment.status === 'cancelled'"
-           class="status-badge status-cancelled">
+        <p v-else-if="selectedAppointment.status === 'cancelled'" class="status-badge status-cancelled">
           Cancelled
         </p>
 
@@ -35,73 +32,86 @@
           {{ selectedAppointment.reason || 'No reason for visit provided' }}
         </p>
 
+        <p v-if="rescheduleSuccess" class="edit-success" role="status">
+          {{ rescheduleSuccess }}
+        </p>
+
         <!-- 5A rescheduling interface -->
         <div v-if="isEditing" class="edit-form">
 
           <div class="form-row">
             <div class="form-field">
               <label for="edit-date">Date</label>
-              <input
-                id="edit-date"
-                type="date"
-                v-model="editDate"
-              >
+              <input id="edit-date" type="date" v-model="editDate" :min="minimumDate()"
+                @change="loadAvailableTimes(true)" :disabled="isSaving">
             </div>
 
             <div class="form-field">
               <label for="edit-time">Time</label>
-              <input
-                id="edit-time"
-                type="time"
-                v-model="editTime"
-              >
+              <select id="edit-time" v-model="editTime"
+                :disabled="isLoadingAvailability || isSaving || !!availabilityError">
+                <option disabled value="">Select a time slot</option>
+                <option v-for="slot in timeSlots" :key="slot" :value="slot"
+                  :disabled="bookedTimeSlots.includes(slot) && !isCurrentSlot(slot)">
+                  {{ slot }}
+                </option>
+              </select>
             </div>
           </div>
 
+          <p v-if="isLoadingAvailability" class="edit-message">
+            Checking availability...
+          </p>
+
+          <p v-if="availabilityError" class="edit-error" role="alert">
+            {{ availabilityError }}
+          </p>
+
+          <p v-if="rescheduleError" class="edit-error" role="alert">
+            {{ rescheduleError }}
+          </p>
+
           <div class="action-buttons">
-            <!-- Saving will be implemented in Task 5B -->
-            <button type="button" class="button-primary" disabled>
-              Save Changes
+            <button type="button" class="button-primary" @click="saveChanges"
+              :disabled="isSaving || isLoadingAvailability || !!availabilityError || !editTime">
+              {{ isSaving ? 'Saving...' : 'Save Changes' }}
             </button>
 
-            <button type="button" class="button-secondary"
-                    @click="cancelEditing">
+            <button type="button" class="button-secondary" @click="cancelEditing" :disabled="isSaving">
               Cancel Edit
             </button>
           </div>
 
         </div>
 
-        <!-- Regular appointment details -->
+        <!-- regular appointment details -->
         <div v-else>
           <div class="detail-schedule">
             <p>🗓 {{ formatDate(selectedAppointment.date) }}</p>
             <p>⏲ {{ selectedAppointment.time || 'Time unavailable' }}</p>
           </div>
 
-          <!-- Task 5A: Separate reschedule and cancel actions -->
+          <!-- 5A separate reschedule and cancel actions -->
           <div v-if="selectedAppointment.status === 'booked'">
 
             <div v-if="canModifyAppointment()" class="action-buttons">
-              <button type="button" class="button-secondary"
-                      @click="startEditing">
+              <button type="button" class="button-secondary" @click="startEditing">
                 Edit / Reschedule
               </button>
 
-              <!-- Cancellation will be implemented in Task 5C -->
+              <!-- cancellation will be implemented in 5C -->
               <button type="button" class="button-danger" disabled>
                 Cancel Appointment
               </button>
             </div>
 
             <p v-else class="action-note">
-              This appointment can no longer be rescheduled or cancelled.
+              This appointment can no longer be rescheduled or cancelled
             </p>
           </div>
 
-          <!-- Task 7C: Completed appointment consultation details -->
-          <div v-if="selectedAppointment.status === 'completed'"
-               class="consultation-details">
+          <!-- 7C completed appointment consultation details -->
+          <div v-if="selectedAppointment.status === 'completed'" class="consultation-details">
             <h3>Consultation Details</h3>
 
             <p>
@@ -120,8 +130,7 @@
             </p>
           </div>
 
-          <div v-else-if="selectedAppointment.status === 'cancelled'"
-               class="consultation-details">
+          <div v-else-if="selectedAppointment.status === 'cancelled'" class="consultation-details">
             <h3>Appointment Details</h3>
             <p>This appointment was cancelled</p>
             <p>No consultation details are available</p>
@@ -147,12 +156,8 @@
       </div>
 
       <div v-else-if="appointments.length > 0" class="history-grid">
-        <AppointmentHistoryCard
-          v-for="appointment in appointments"
-          :key="appointment.id"
-          :appointment="appointment"
-          @select="selectAppointment"
-        />
+        <AppointmentHistoryCard v-for="appointment in appointments" :key="appointment.id" :appointment="appointment"
+          @select="selectAppointment" />
       </div>
 
       <div v-else class="card history-message">
@@ -166,6 +171,11 @@
 <script>
 import AppointmentHistoryCard from '@/components/patient/AppointmentHistoryCard.vue';
 import { auth, db } from '@/services/firebase.js';
+import {
+  clinicTimeSlots,
+  getBookedTimeSlots,
+  rescheduleAppointment
+} from '@/services/appointmentService.js';
 
 export default {
   name: 'History',
@@ -181,10 +191,20 @@ export default {
       loading: true,
       errorMessage: '',
       unsubscribeAuth: null,
+
       // 5A
       isEditing: false,
       editDate: '',
-      editTime: ''
+      editTime: '',
+
+      // 5B
+      timeSlots: clinicTimeSlots,
+      bookedTimeSlots: [],
+      isLoadingAvailability: false,
+      availabilityError: '',
+      rescheduleError: '',
+      rescheduleSuccess: '',
+      isSaving: false
     };
   },
 
@@ -242,6 +262,7 @@ export default {
 
           patientAppointments.push({
             id: doc.id,
+            doctorId: appointment.doctorId,
             doctorName: doctorName,
             reason: appointment.reasonForVisit,
             date: appointment.appointmentDate,
@@ -278,18 +299,23 @@ export default {
     selectAppointment(appointment) {
       this.selectedAppointment = appointment;
       this.isEditing = false;
+      this.rescheduleSuccess = '';
+      this.rescheduleError = '';
     },
 
     backToHistory() {
+      if (this.isSaving) return;
+
       this.selectedAppointment = null;
       this.isEditing = false;
+      this.rescheduleSuccess = '';
     },
 
     // 5A Allow changes only before the appointment day
     canModifyAppointment() {
       if (!this.selectedAppointment ||
-          this.selectedAppointment.status !== 'booked' ||
-          !this.selectedAppointment.date) {
+        this.selectedAppointment.status !== 'booked' ||
+        !this.selectedAppointment.date) {
         return false;
       }
 
@@ -312,6 +338,10 @@ export default {
       this.editDate = this.selectedAppointment.date;
       this.editTime = this.selectedAppointment.time;
       this.isEditing = true;
+      this.rescheduleError = '';
+      this.rescheduleSuccess = '';
+
+      this.loadAvailableTimes(false);
     },
 
     // 5A return without saving changes
@@ -319,6 +349,142 @@ export default {
       this.editDate = '';
       this.editTime = '';
       this.isEditing = false;
+      this.rescheduleError = '';
+      this.availabilityError = '';
+    },
+
+    // 5B check available time slots
+    async loadAvailableTimes(clearTime) {
+      if (clearTime) {
+        this.editTime = '';
+      }
+
+      this.availabilityError = '';
+      this.rescheduleError = '';
+      this.bookedTimeSlots = [];
+
+      if (!this.selectedAppointment ||
+        !this.editDate ||
+        this.editDate < this.minimumDate()) {
+        return;
+      }
+
+      this.isLoadingAvailability = true;
+
+      try {
+        const booked = await getBookedTimeSlots({
+          doctorId: this.selectedAppointment.doctorId,
+          appointmentDate: this.editDate
+        });
+
+        this.bookedTimeSlots = Array.from(booked);
+
+      } catch (error) {
+        console.error('error checking availability:', error);
+        this.availabilityError = 'Unable to check available time slots';
+      } finally {
+        this.isLoadingAvailability = false;
+      }
+    },
+
+    isCurrentSlot(slot) {
+      return this.editDate === this.selectedAppointment.date &&
+        slot === this.selectedAppointment.time;
+    },
+
+    minimumDate() {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const year = tomorrow.getFullYear();
+      const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const day = String(tomorrow.getDate()).padStart(2, '0');
+
+      return `${year}-${month}-${day}`;
+    },
+
+    // 5B save rescheduled appointment
+    async saveChanges() {
+      if (this.isSaving ||
+        this.isLoadingAvailability ||
+        this.availabilityError ||
+        !this.canModifyAppointment()) {
+        return;
+      }
+
+      this.rescheduleError = '';
+      this.rescheduleSuccess = '';
+
+      if (!this.editDate || this.editDate < this.minimumDate()) {
+        this.rescheduleError = 'Please choose a date after today';
+        return;
+      }
+
+      if (!this.editTime || !this.timeSlots.includes(this.editTime)) {
+        this.rescheduleError = 'Please choose a valid time slot';
+        return;
+      }
+
+      if (this.bookedTimeSlots.includes(this.editTime) &&
+        !this.isCurrentSlot(this.editTime)) {
+        this.rescheduleError = 'That time slot is already booked';
+        return;
+      }
+
+      const patientId = auth.currentUser && auth.currentUser.uid;
+
+      if (!patientId) {
+        this.rescheduleError = 'Please log in to reschedule your appointment';
+        return;
+      }
+
+      this.isSaving = true;
+
+      try {
+        const newId = await rescheduleAppointment({
+          appointmentId: this.selectedAppointment.id,
+          patientId: patientId,
+          appointmentDate: this.editDate,
+          appointmentTime: this.editTime
+        });
+
+        if (auth.currentUser && auth.currentUser.uid === patientId) {
+          this.selectedAppointment.id = newId;
+          this.selectedAppointment.date = this.editDate;
+          this.selectedAppointment.time = this.editTime;
+
+          this.appointments.sort((a, b) => {
+            return (b.date + b.time).localeCompare(a.date + a.time);
+          });
+
+          this.isEditing = false;
+          this.rescheduleSuccess = 'Appointment rescheduled successfully';
+        }
+
+      } catch (error) {
+        console.error('error rescheduling appointment:', error);
+
+        const messages = {
+          'invalid-date': 'Please choose a date after today',
+          'invalid-time-slot': 'Please choose a valid time slot',
+          'slot-taken': 'That time slot is no longer available, please choose another slot',
+          'invalid-doctor': 'That doctor is no longer available',
+          'cannot-reschedule': 'This appointment can no longer be rescheduled',
+          'appointment-not-found': 'This appointment could not be found',
+          'no-changes': 'Please select a different date or time',
+          'unauthenticated': 'Please log in to reschedule your appointment'
+        };
+
+        if (error.code === 'slot-taken') {
+          await this.loadAvailableTimes(true);
+        }
+
+        this.rescheduleError =
+          messages[error.code] || 'Unable to reschedule appointment';
+
+      } finally {
+        this.isSaving = false;
+      }
     },
 
     formatDate(date) {
@@ -485,7 +651,7 @@ export default {
   font-size: 13px;
 }
 
-/* Task 5A: Edit form */
+/* 5A Edit form */
 .edit-form {
   margin-top: 24px;
 }
@@ -508,7 +674,8 @@ export default {
   margin-bottom: 8px;
 }
 
-.form-field input {
+.form-field input,
+.form-field select {
   box-sizing: border-box;
   width: 100%;
   padding: 10px;
@@ -519,11 +686,31 @@ export default {
   font-size: 14px;
 }
 
-.form-field input:focus {
+.form-field input:focus,
+.form-field select:focus {
   outline: 2px solid var(--color-primary);
 }
 
-/* Task 7C: Consultation details */
+.edit-message,
+.edit-error,
+.edit-success {
+  font-size: 13px;
+  margin-top: 12px !important;
+}
+
+.edit-message {
+  color: var(--color-text-muted);
+}
+
+.edit-error {
+  color: #b42318;
+}
+
+.edit-success {
+  color: var(--color-primary-dark);
+}
+
+/* 7C: consultation details */
 .consultation-details {
   border-top: 1px solid var(--color-border);
   margin-top: 24px;
