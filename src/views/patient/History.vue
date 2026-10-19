@@ -3,7 +3,7 @@
 
     <!-- appointment details view -->
     <div v-if="selectedAppointment" class="appointment-detail-view">
-      <button class="back-button" @click="backToHistory">
+      <button type="button" class="back-button" @click="backToHistory">
         &larr; Back
       </button>
 
@@ -35,37 +35,97 @@
           {{ selectedAppointment.reason || 'No reason for visit provided' }}
         </p>
 
-        <div class="detail-schedule">
-          <p>🗓 {{ formatDate(selectedAppointment.date) }}</p>
-          <p>⏲ {{ selectedAppointment.time || 'Time unavailable' }}</p>
+        <!-- 5A rescheduling interface -->
+        <div v-if="isEditing" class="edit-form">
+
+          <div class="form-row">
+            <div class="form-field">
+              <label for="edit-date">Date</label>
+              <input
+                id="edit-date"
+                type="date"
+                v-model="editDate"
+              >
+            </div>
+
+            <div class="form-field">
+              <label for="edit-time">Time</label>
+              <input
+                id="edit-time"
+                type="time"
+                v-model="editTime"
+              >
+            </div>
+          </div>
+
+          <div class="action-buttons">
+            <!-- Saving will be implemented in Task 5B -->
+            <button type="button" class="button-primary" disabled>
+              Save Changes
+            </button>
+
+            <button type="button" class="button-secondary"
+                    @click="cancelEditing">
+              Cancel Edit
+            </button>
+          </div>
+
         </div>
 
-        <!-- 7C consultation details for completed appointments -->
-        <div v-if="selectedAppointment.status === 'completed'"
-             class="consultation-details">
-          <h3>Consultation Details</h3>
+        <!-- Regular appointment details -->
+        <div v-else>
+          <div class="detail-schedule">
+            <p>🗓 {{ formatDate(selectedAppointment.date) }}</p>
+            <p>⏲ {{ selectedAppointment.time || 'Time unavailable' }}</p>
+          </div>
 
-          <p>
-            <strong>Outcome:</strong>
-            {{ selectedAppointment.outcome || 'Not available' }}
-          </p>
+          <!-- Task 5A: Separate reschedule and cancel actions -->
+          <div v-if="selectedAppointment.status === 'booked'">
 
-          <p>
-            <strong>Diagnosis:</strong>
-            {{ selectedAppointment.diagnosis || 'Not available' }}
-          </p>
+            <div v-if="canModifyAppointment()" class="action-buttons">
+              <button type="button" class="button-secondary"
+                      @click="startEditing">
+                Edit / Reschedule
+              </button>
 
-          <p>
-            <strong>Medication:</strong>
-            {{ selectedAppointment.medication || 'Not available' }}
-          </p>
-        </div>
+              <!-- Cancellation will be implemented in Task 5C -->
+              <button type="button" class="button-danger" disabled>
+                Cancel Appointment
+              </button>
+            </div>
 
-        <div v-else-if="selectedAppointment.status === 'cancelled'"
-             class="consultation-details">
-          <h3>Appointment Details</h3>
-          <p>This appointment was cancelled</p>
-          <p>No consultation details are available</p>
+            <p v-else class="action-note">
+              This appointment can no longer be rescheduled or cancelled.
+            </p>
+          </div>
+
+          <!-- Task 7C: Completed appointment consultation details -->
+          <div v-if="selectedAppointment.status === 'completed'"
+               class="consultation-details">
+            <h3>Consultation Details</h3>
+
+            <p>
+              <strong>Outcome:</strong>
+              {{ selectedAppointment.outcome || 'Not available' }}
+            </p>
+
+            <p>
+              <strong>Diagnosis:</strong>
+              {{ selectedAppointment.diagnosis || 'Not available' }}
+            </p>
+
+            <p>
+              <strong>Medication:</strong>
+              {{ selectedAppointment.medication || 'Not available' }}
+            </p>
+          </div>
+
+          <div v-else-if="selectedAppointment.status === 'cancelled'"
+               class="consultation-details">
+            <h3>Appointment Details</h3>
+            <p>This appointment was cancelled</p>
+            <p>No consultation details are available</p>
+          </div>
         </div>
 
       </div>
@@ -120,7 +180,11 @@ export default {
       selectedAppointment: null,
       loading: true,
       errorMessage: '',
-      unsubscribeAuth: null
+      unsubscribeAuth: null,
+      // 5A
+      isEditing: false,
+      editDate: '',
+      editTime: ''
     };
   },
 
@@ -131,6 +195,7 @@ export default {
       } else {
         this.appointments = [];
         this.selectedAppointment = null;
+        this.isEditing = false;
         this.errorMessage = 'Please log in to view your appointments';
         this.loading = false;
       }
@@ -149,6 +214,7 @@ export default {
       this.errorMessage = '';
       this.appointments = [];
       this.selectedAppointment = null;
+      this.isEditing = false;
 
       try {
         // 7A retrieve appointments for the logged-in patient
@@ -192,7 +258,6 @@ export default {
           return (b.date + b.time).localeCompare(a.date + a.time);
         });
 
-        // check patient is still logged in
         if (auth.currentUser && auth.currentUser.uid === patientId) {
           this.appointments = patientAppointments;
         }
@@ -212,10 +277,48 @@ export default {
 
     selectAppointment(appointment) {
       this.selectedAppointment = appointment;
+      this.isEditing = false;
     },
 
     backToHistory() {
       this.selectedAppointment = null;
+      this.isEditing = false;
+    },
+
+    // 5A Allow changes only before the appointment day
+    canModifyAppointment() {
+      if (!this.selectedAppointment ||
+          this.selectedAppointment.status !== 'booked' ||
+          !this.selectedAppointment.date) {
+        return false;
+      }
+
+      const appointmentDate = new Date(
+        this.selectedAppointment.date + 'T00:00:00'
+      );
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      return appointmentDate > today;
+    },
+
+    // 5A open the pre-filled edit form
+    startEditing() {
+      if (!this.canModifyAppointment()) {
+        return;
+      }
+
+      this.editDate = this.selectedAppointment.date;
+      this.editTime = this.selectedAppointment.time;
+      this.isEditing = true;
+    },
+
+    // 5A return without saving changes
+    cancelEditing() {
+      this.editDate = '';
+      this.editTime = '';
+      this.isEditing = false;
     },
 
     formatDate(date) {
@@ -337,7 +440,90 @@ export default {
   margin-top: 24px;
 }
 
-/* 7C consultation details */
+/* 5A appointment actions */
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.action-buttons button {
+  border-radius: 5px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button-primary {
+  background: var(--color-primary);
+  color: white;
+  border: 1px solid var(--color-primary);
+}
+
+.button-secondary {
+  background: white;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.button-danger {
+  background: white;
+  color: #d83b3b;
+  border: 1px solid #f2c6c6;
+}
+
+.action-buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-note {
+  margin-top: 24px !important;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+/* Task 5A: Edit form */
+.edit-form {
+  margin-top: 24px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.form-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-field label {
+  display: block;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.form-field input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: white;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.form-field input:focus {
+  outline: 2px solid var(--color-primary);
+}
+
+/* Task 7C: Consultation details */
 .consultation-details {
   border-top: 1px solid var(--color-border);
   margin-top: 24px;
@@ -369,6 +555,10 @@ export default {
 @media (max-width: 600px) {
   .history-grid {
     grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    flex-direction: column;
   }
 }
 </style>
