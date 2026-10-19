@@ -178,12 +178,12 @@ export async function rescheduleAppointment({
     }
 
     if (current.status !== 'booked' ||
-        !isFutureDate(current.appointmentDate)) {
+      !isFutureDate(current.appointmentDate)) {
       throw createAppointmentError('cannot-reschedule');
     }
 
     if (current.appointmentDate === appointmentDate &&
-        current.appointmentTime === appointmentTime) {
+      current.appointmentTime === appointmentTime) {
       throw createAppointmentError('no-changes');
     }
 
@@ -191,7 +191,7 @@ export async function rescheduleAppointment({
       throw createAppointmentError('invalid-doctor');
     }
 
-    // Generate a new appointment ID following the booking service
+    // generate a new appointment ID following the booking service
     const newId = `${current.doctorId}_${appointmentDate}_${appointmentTime.replace(':', '-')}`;
 
     const newRef = appointments.doc(newId);
@@ -201,7 +201,7 @@ export async function rescheduleAppointment({
     const doctorSnapshot = await transaction.get(doctorRef);
 
     if (!doctorSnapshot.exists ||
-        doctorSnapshot.data().active !== true) {
+      doctorSnapshot.data().active !== true) {
       throw createAppointmentError('invalid-doctor');
     }
 
@@ -209,7 +209,7 @@ export async function rescheduleAppointment({
       throw createAppointmentError('slot-taken');
     }
 
-    // Save the appointment under the new slot ID
+    // save the appointment under the new slot ID
     transaction.set(newRef, {
       ...current,
       appointmentDate,
@@ -217,9 +217,58 @@ export async function rescheduleAppointment({
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    // Release the old appointment slot
+    // release the old appointment slot
     transaction.delete(oldRef);
 
     return newId;
+  });
+}
+
+
+// 5C cancel an appointment while keeping its history
+export async function cancelAppointment({ appointmentId, patientId }) {
+  if (!patientId) {
+    throw createAppointmentError('unauthenticated');
+  }
+
+  if (!appointmentId) {
+    throw createAppointmentError('appointment-not-found');
+  }
+
+  const appointments = db.collection('appointments');
+  const oldRef = appointments.doc(appointmentId);
+
+  return db.runTransaction(async (transaction) => {
+    const oldSnapshot = await transaction.get(oldRef);
+
+    if (!oldSnapshot.exists) {
+      throw createAppointmentError('appointment-not-found');
+    }
+
+    const current = oldSnapshot.data();
+
+    if (current.patientId !== patientId) {
+      throw createAppointmentError('unauthenticated');
+    }
+
+    if (current.status !== 'booked' ||
+      !isFutureDate(current.appointmentDate)) {
+      throw createAppointmentError('cannot-cancel');
+    }
+
+    // archived records use a different ID so the original slot becomes available
+    const archiveId = `cancelled_${appointmentId}_${appointments.doc().id}`;
+    const archiveRef = appointments.doc(archiveId);
+
+    transaction.set(archiveRef, {
+      ...current,
+      status: 'cancelled',
+      originalAppointmentId: appointmentId,
+      cancelledAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    transaction.delete(oldRef);
+
+    return archiveRef.id;
   });
 }

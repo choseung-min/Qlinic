@@ -36,6 +36,10 @@
           {{ rescheduleSuccess }}
         </p>
 
+        <p v-if="cancelSuccess" class="edit-success" role="status">
+          {{ cancelSuccess }}
+        </p>
+
         <!-- 5A rescheduling interface -->
         <div v-if="isEditing" class="edit-form">
 
@@ -99,8 +103,7 @@
                 Edit / Reschedule
               </button>
 
-              <!-- cancellation will be implemented in 5C -->
-              <button type="button" class="button-danger" disabled>
+              <button type="button" class="button-danger" @click="openCancelConfirm" :disabled="isCancelling">
                 Cancel Appointment
               </button>
             </div>
@@ -165,6 +168,30 @@
         <p>Your appointments will appear here</p>
       </div>
     </div>
+
+    <!-- 5C cancellation confirmation -->
+    <div v-if="showCancelConfirm" class="cancel-overlay" @click.self="closeCancelConfirm">
+      <div class="cancel-dialog" role="alertdialog" aria-modal="true" aria-labelledby="cancel-dialog-title"
+        aria-describedby="cancel-dialog-description">
+        <h2 id="cancel-dialog-title">Confirm cancel?</h2>
+        <p id="cancel-dialog-description">
+          This will cancel your appointment and free up the slot for other patients.
+        </p>
+
+        <p v-if="cancelError" class="edit-error" role="alert">
+          {{ cancelError }}
+        </p>
+
+        <div class="cancel-dialog-actions">
+          <button type="button" class="button-secondary" @click="closeCancelConfirm" :disabled="isCancelling">
+            Keep Appointment
+          </button>
+          <button type="button" class="button-danger" @click="confirmCancellation" :disabled="isCancelling">
+            {{ isCancelling ? 'Cancelling...' : 'Yes, Cancel' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
@@ -174,7 +201,8 @@ import { auth, db } from '@/services/firebase.js';
 import {
   clinicTimeSlots,
   getBookedTimeSlots,
-  rescheduleAppointment
+  rescheduleAppointment,
+  cancelAppointment
 } from '@/services/appointmentService.js';
 
 export default {
@@ -204,7 +232,13 @@ export default {
       availabilityError: '',
       rescheduleError: '',
       rescheduleSuccess: '',
-      isSaving: false
+      isSaving: false,
+
+      // 5C
+      showCancelConfirm: false,
+      isCancelling: false,
+      cancelError: '',
+      cancelSuccess: ''
     };
   },
 
@@ -301,17 +335,23 @@ export default {
       this.isEditing = false;
       this.rescheduleSuccess = '';
       this.rescheduleError = '';
+      this.cancelSuccess = '';
+      this.cancelError = '';
+      this.showCancelConfirm = false;
     },
 
     backToHistory() {
-      if (this.isSaving) return;
+      if (this.isSaving || this.isCancelling) return;
 
       this.selectedAppointment = null;
       this.isEditing = false;
       this.rescheduleSuccess = '';
+      this.cancelSuccess = '';
+      this.cancelError = '';
+      this.showCancelConfirm = false;
     },
 
-    // 5A Allow changes only before the appointment day
+    // 5A allow changes only before the appointment day
     canModifyAppointment() {
       if (!this.selectedAppointment ||
         this.selectedAppointment.status !== 'booked' ||
@@ -484,6 +524,61 @@ export default {
 
       } finally {
         this.isSaving = false;
+      }
+    },
+
+    // 5C cancel appointment
+    openCancelConfirm() {
+      if (!this.canModifyAppointment()) return;
+
+      this.cancelError = '';
+      this.cancelSuccess = '';
+      this.showCancelConfirm = true;
+    },
+
+    closeCancelConfirm() {
+      if (this.isCancelling) return;
+
+      this.showCancelConfirm = false;
+      this.cancelError = '';
+    },
+
+    async confirmCancellation() {
+      if (this.isCancelling || !this.canModifyAppointment()) return;
+
+      const patientId = auth.currentUser && auth.currentUser.uid;
+      if (!patientId) {
+        this.cancelError = 'Please log in to cancel your appointment';
+        return;
+      }
+
+      this.isCancelling = true;
+      this.cancelError = '';
+
+      try {
+        const archivedId = await cancelAppointment({
+          appointmentId: this.selectedAppointment.id,
+          patientId: patientId
+        });
+
+        if (auth.currentUser && auth.currentUser.uid === patientId) {
+          this.selectedAppointment.id = archivedId;
+          this.selectedAppointment.status = 'cancelled';
+          this.showCancelConfirm = false;
+          this.cancelSuccess = 'Appointment cancelled successfully';
+        }
+      } catch (error) {
+        console.error('error cancelling appointment:', error);
+
+        const messages = {
+          'appointment-not-found': 'This appointment could not be found',
+          'cannot-cancel': 'This appointment can no longer be cancelled',
+          'unauthenticated': 'Please log in to cancel your appointment'
+        };
+
+        this.cancelError = messages[error.code] || 'Unable to cancel appointment';
+      } finally {
+        this.isCancelling = false;
       }
     },
 
@@ -747,5 +842,71 @@ export default {
   .form-row {
     flex-direction: column;
   }
+}
+
+/* 5C cancellation confirmation popup */
+.cancel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 20px;
+}
+
+.cancel-dialog {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 480px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+
+.cancel-dialog h2 {
+  color: var(--color-text);
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.cancel-dialog p {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.cancel-dialog .edit-error {
+  color: #b42318;
+}
+
+.cancel-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.cancel-dialog-actions button {
+  border-radius: 5px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cancel-dialog-actions .button-danger {
+  background: #d83b3b;
+  color: white;
+  border: 1px solid #d83b3b;
+}
+
+.cancel-dialog-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
