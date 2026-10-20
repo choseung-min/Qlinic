@@ -1,7 +1,8 @@
 <template>
   <main class="page dashboard-page">
     <header class="page-header">
-      <h1>Welcome to Qlinic</h1>
+      <p class="eyebrow">Patient dashboard</p>
+      <h1>Welcome, {{ patientName }}</h1>
       <p>Here's what's happening with your visits today.</p>
     </header>
 
@@ -73,10 +74,36 @@
       </button>
     </section>
 
+    <section class="quick-actions" aria-label="Quick actions">
+      <router-link class="quick-action card" to="/appointment-booking">
+        <span class="action-icon" aria-hidden="true">▣</span>
+        <span>
+          <strong>Book Appointment</strong>
+          <small>Pick a doctor, date and time slot.</small>
+        </span>
+      </router-link>
+      <router-link class="quick-action card" to="/history">
+        <span class="action-icon" aria-hidden="true">↶</span>
+        <span>
+          <strong>View History</strong>
+          <small>See your past visits and outcomes.</small>
+        </span>
+      </router-link>
+      <router-link class="quick-action card" to="/personal-details">
+        <span class="action-icon" aria-hidden="true">♙</span>
+        <span>
+          <strong>My Profile</strong>
+          <small>Update your personal details.</small>
+        </span>
+      </router-link>
+    </section>
+
     <section class="appointments-section" aria-labelledby="upcoming-title">
       <div class="section-heading">
         <h2 id="upcoming-title">Upcoming Appointments</h2>
-        <router-link to="/history">View History</router-link>
+        <router-link class="book-new-button" to="/appointment-booking">
+          <span aria-hidden="true">＋</span> Book New
+        </router-link>
       </div>
 
       <p v-if="isLoadingAppointments" class="status-message" role="status">
@@ -92,7 +119,12 @@
         <article
           v-for="appointment in upcomingAppointments"
           :key="appointment.id"
-          class="appointment-card"
+          class="appointment-card card"
+          role="link"
+          tabindex="0"
+          @click="openAppointment(appointment.id)"
+          @keydown.enter="openAppointment(appointment.id)"
+          @keydown.space.prevent="openAppointment(appointment.id)"
         >
           <div class="appointment-topline">
             <span class="appointment-status">{{ appointment.status }}</span>
@@ -109,6 +141,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { auth, db } from "@/services/firebase";
 import {
   joinWalkInQueue,
@@ -118,6 +151,8 @@ import {
 } from "@/services/queueService";
 
 const isJoining = ref(false);
+const router = useRouter();
+const patientName = ref("there");
 const isLeaving = ref(false);
 const isLoadingAppointments = ref(true);
 const isInitializingQueue = ref(true);
@@ -145,6 +180,21 @@ const queuePosition = computed(() =>
 );
 
 const estimatedWait = computed(() => patientsAhead.value * 15);
+
+async function loadPatientProfile(user) {
+  patientName.value = user.displayName?.trim() || "there";
+
+  try {
+    const userSnapshot = await db.collection("users").doc(user.uid).get();
+    const displayName = userSnapshot.data()?.displayName?.trim();
+
+    if (displayName && auth.currentUser?.uid === user.uid) {
+      patientName.value = displayName;
+    }
+  } catch (error) {
+    console.error("Unable to load patient profile.", error);
+  }
+}
 
 async function loadUpcomingAppointments(patientId) {
   isLoadingAppointments.value = true;
@@ -234,6 +284,10 @@ function formatAppointmentTime(timeValue) {
 
 function formatQueueNumber(queueNumber) {
   return String(queueNumber).padStart(2, "0");
+}
+
+function openAppointment(appointmentId) {
+  router.push({ name: "History", query: { appointmentId } });
 }
 
 function handleQueueListenerError(error) {
@@ -349,6 +403,7 @@ onMounted(() => {
     stopWaitingQueueListener?.();
 
     if (!user) {
+      patientName.value = "there";
       upcomingAppointments.value = [];
       isLoadingAppointments.value = false;
       isInitializingQueue.value = false;
@@ -357,6 +412,7 @@ onMounted(() => {
     }
 
     console.log("Queue auth user:", user.uid);
+    loadPatientProfile(user);
     loadUpcomingAppointments(user.uid);
     startActiveVisitListener(user.uid);
   });
@@ -371,7 +427,16 @@ onUnmounted(() => {
 
 <style scoped>
 .dashboard-page {
-  max-width: 900px;
+  max-width: 950px;
+}
+
+.eyebrow {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
 }
 
 .appointments-section {
@@ -386,35 +451,52 @@ onUnmounted(() => {
 }
 
 .section-heading h2 {
-  font-size: 18px;
+  font-size: 16px;
   margin: 0;
 }
 
-.section-heading a {
+.book-new-button {
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
   color: var(--color-primary-dark);
-  font-size: 13px;
+  display: inline-flex;
+  font-size: 12px;
   font-weight: 600;
+  gap: 5px;
+  padding: 7px 10px;
   text-decoration: none;
 }
 
-.section-heading a:hover {
-  text-decoration: underline;
+.book-new-button:hover {
+  background: var(--color-primary-soft);
 }
 
 .appointments-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .appointment-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  cursor: pointer;
   display: grid;
   gap: 8px;
-  padding: 18px;
+  min-height: 150px;
+  padding: 16px;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.appointment-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.appointment-card:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
 }
 
 .appointment-card h3,
@@ -423,7 +505,7 @@ onUnmounted(() => {
 }
 
 .appointment-card h3 {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .appointment-card p {
@@ -432,7 +514,7 @@ onUnmounted(() => {
 }
 
 .appointment-card strong {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .appointment-topline {
@@ -462,7 +544,7 @@ onUnmounted(() => {
   display: flex;
   gap: 24px;
   justify-content: space-between;
-  margin-top: 24px;
+  margin-top: 22px;
 }
 
 .joined-queue-card {
@@ -552,7 +634,7 @@ onUnmounted(() => {
 }
 
 .queue-card h2 {
-  font-size: 16px;
+  font-size: 14px;
   margin: 0 0 6px;
 }
 
@@ -564,6 +646,57 @@ onUnmounted(() => {
 
 .queue-card button {
   flex: 0 0 auto;
+}
+
+.quick-actions {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 22px;
+}
+
+.quick-action {
+  align-items: flex-start;
+  color: inherit;
+  display: flex;
+  gap: 12px;
+  min-height: 84px;
+  padding: 16px;
+  text-decoration: none;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.quick-action:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.quick-action strong,
+.quick-action small {
+  display: block;
+}
+
+.quick-action strong {
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.quick-action small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.action-icon {
+  align-items: center;
+  color: var(--color-primary);
+  display: inline-flex;
+  font-size: 18px;
+  height: 22px;
+  justify-content: center;
+  width: 22px;
 }
 
 .leave-button {
@@ -596,7 +729,8 @@ button:disabled {
 }
 
 @media (max-width: 560px) {
-  .appointments-grid {
+  .appointments-grid,
+  .quick-actions {
     grid-template-columns: 1fr;
   }
 

@@ -315,6 +315,14 @@ export default {
 
         if (auth.currentUser && auth.currentUser.uid === patientId) {
           this.appointments = patientAppointments;
+          const appointmentId = this.$route.query.appointmentId;
+          const selectedAppointment = patientAppointments.find(
+            (appointment) => appointment.id === appointmentId
+          );
+
+          if (selectedAppointment) {
+            this.selectAppointment(selectedAppointment);
+          }
         }
 
       } catch (error) {
@@ -338,6 +346,9 @@ export default {
       this.cancelSuccess = '';
       this.cancelError = '';
       this.showCancelConfirm = false;
+      if (this.$route.query.appointmentId) {
+        this.$router.replace({ name: 'History' });
+      }
     },
 
     backToHistory() {
