@@ -146,8 +146,9 @@
     <!-- appointment history grid -->
     <div v-else>
       <div class="page-header">
-        <h1>Appointment History</h1>
-        <p>All your past and upcoming appointments</p>
+        <p class="eyebrow">Patient appointments</p>
+        <h1>My Appointments</h1>
+        <p>View and manage your upcoming, past and cancelled appointments.</p>
       </div>
 
       <div v-if="loading" class="history-message">
@@ -158,15 +159,30 @@
         <p>{{ errorMessage }}</p>
       </div>
 
-      <div v-else-if="appointments.length > 0" class="history-grid">
-        <AppointmentHistoryCard v-for="appointment in appointments" :key="appointment.id" :appointment="appointment"
-          @select="selectAppointment" />
-      </div>
+      <template v-else>
+        <nav class="appointment-tabs" aria-label="Appointment status">
+          <button
+            v-for="tab in appointmentTabs"
+            :key="tab.id"
+            class="appointment-tab"
+            :class="{ active: activeTab === tab.id }"
+            type="button"
+            @click="activeTab = tab.id"
+          >
+            {{ tab.label }} ({{ tab.count }})
+          </button>
+        </nav>
 
-      <div v-else class="card history-message">
-        <h2>No appointments yet</h2>
-        <p>Your appointments will appear here</p>
-      </div>
+        <div v-if="filteredAppointments.length > 0" class="history-grid">
+        <AppointmentHistoryCard v-for="appointment in filteredAppointments" :key="appointment.id" :appointment="appointment"
+          @select="selectAppointment" />
+        </div>
+
+        <div v-else class="card history-message">
+          <h2>No {{ activeTab }} appointments</h2>
+          <p>Your {{ activeTab }} appointments will appear here.</p>
+        </div>
+      </template>
     </div>
 
     <!-- 5C cancellation confirmation -->
@@ -215,6 +231,7 @@ export default {
   data() {
     return {
       appointments: [],
+      activeTab: 'upcoming',
       selectedAppointment: null,
       loading: true,
       errorMessage: '',
@@ -242,6 +259,43 @@ export default {
     };
   },
 
+  computed: {
+    appointmentTabs() {
+      return [
+        { id: 'upcoming', label: 'Upcoming', count: this.upcomingAppointments.length },
+        { id: 'past', label: 'Past', count: this.pastAppointments.length },
+        { id: 'cancelled', label: 'Cancelled', count: this.cancelledAppointments.length }
+      ];
+    },
+
+    upcomingAppointments() {
+      const today = this.localDate();
+      return this.appointments.filter((appointment) =>
+        appointment.status === 'booked' && appointment.date >= today
+      );
+    },
+
+    pastAppointments() {
+      const today = this.localDate();
+      return this.appointments.filter((appointment) =>
+        appointment.status !== 'cancelled' &&
+        (appointment.status === 'completed' || appointment.date < today)
+      );
+    },
+
+    cancelledAppointments() {
+      return this.appointments.filter((appointment) => appointment.status === 'cancelled');
+    },
+
+    filteredAppointments() {
+      return {
+        upcoming: this.upcomingAppointments,
+        past: this.pastAppointments,
+        cancelled: this.cancelledAppointments
+      }[this.activeTab];
+    }
+  },
+
   mounted() {
     this.unsubscribeAuth = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -263,6 +317,14 @@ export default {
   },
 
   methods: {
+    localDate() {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    },
+
     async getAppointments(patientId) {
       this.loading = true;
       this.errorMessage = '';
@@ -609,6 +671,49 @@ export default {
 </script>
 
 <style scoped>
+.history-page {
+  max-width: 1100px;
+}
+
+.eyebrow {
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.appointment-tabs {
+  background: #eef3f4;
+  border-radius: 10px;
+  display: flex;
+  gap: 4px;
+  margin: 24px 0;
+  max-width: 570px;
+  padding: 4px;
+}
+
+.appointment-tab {
+  background: transparent;
+  border-radius: 7px;
+  color: var(--color-text-muted);
+  flex: 1;
+  font-size: 13px;
+  padding: 10px 14px;
+}
+
+.appointment-tab:hover {
+  background: transparent;
+  color: var(--color-primary-dark);
+}
+
+.appointment-tab.active {
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--color-primary-dark);
+}
+
 .history-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -840,6 +945,10 @@ export default {
 }
 
 @media (max-width: 900px) {
+  .appointment-tabs {
+    max-width: none;
+  }
+
   .history-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
