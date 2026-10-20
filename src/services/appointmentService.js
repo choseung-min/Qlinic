@@ -2,7 +2,7 @@ import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
 
-const clinicTimeSlots = [
+export const clinicTimeSlots = [
   "09:00",
   "09:30",
   "10:00",
@@ -136,4 +136,139 @@ function createAppointmentError(code) {
   const error = new Error(code);
   error.code = code;
   return error;
+}
+
+
+export async function rescheduleAppointment({
+  appointmentId,
+  patientId,
+  appointmentDate,
+  appointmentTime
+}) {
+  if (!patientId) {
+    throw createAppointmentError('unauthenticated');
+  }
+
+  if (!appointmentId) {
+    throw createAppointmentError('appointment-not-found');
+  }
+
+  if (!isFutureDate(appointmentDate)) {
+    throw createAppointmentError('invalid-date');
+  }
+
+  if (!clinicTimeSlots.includes(appointmentTime)) {
+    throw createAppointmentError('invalid-time-slot');
+  }
+
+  const appointments = db.collection('appointments');
+  const oldRef = appointments.doc(appointmentId);
+
+  return db.runTransaction(async (transaction) => {
+    const oldSnapshot = await transaction.get(oldRef);
+
+    if (!oldSnapshot.exists) {
+      throw createAppointmentError('appointment-not-found');
+    }
+
+    const current = oldSnapshot.data();
+
+    if (current.patientId !== patientId) {
+      throw createAppointmentError('unauthenticated');
+    }
+
+    if (current.status !== 'booked' ||
+      !isFutureDate(current.appointmentDate)) {
+      throw createAppointmentError('cannot-reschedule');
+    }
+
+    if (current.appointmentDate === appointmentDate &&
+      current.appointmentTime === appointmentTime) {
+      throw createAppointmentError('no-changes');
+    }
+
+    if (!current.doctorId) {
+      throw createAppointmentError('invalid-doctor');
+    }
+
+    // generate a new appointment ID following the booking service
+    const newId = `${current.doctorId}_${appointmentDate}_${appointmentTime.replace(':', '-')}`;
+
+    const newRef = appointments.doc(newId);
+    const doctorRef = db.collection('doctors').doc(current.doctorId);
+
+    const newSnapshot = await transaction.get(newRef);
+    const doctorSnapshot = await transaction.get(doctorRef);
+
+    if (!doctorSnapshot.exists ||
+      doctorSnapshot.data().active !== true) {
+      throw createAppointmentError('invalid-doctor');
+    }
+
+    if (newSnapshot.exists) {
+      throw createAppointmentError('slot-taken');
+    }
+
+    // save the appointment under the new slot ID
+    transaction.set(newRef, {
+      ...current,
+      appointmentDate,
+      appointmentTime,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // release the old appointment slot
+    transaction.delete(oldRef);
+
+    return newId;
+  });
+}
+
+
+// 5C cancel an appointment while keeping its history
+export async function cancelAppointment({ appointmentId, patientId }) {
+  if (!patientId) {
+    throw createAppointmentError('unauthenticated');
+  }
+
+  if (!appointmentId) {
+    throw createAppointmentError('appointment-not-found');
+  }
+
+  const appointments = db.collection('appointments');
+  const oldRef = appointments.doc(appointmentId);
+
+  return db.runTransaction(async (transaction) => {
+    const oldSnapshot = await transaction.get(oldRef);
+
+    if (!oldSnapshot.exists) {
+      throw createAppointmentError('appointment-not-found');
+    }
+
+    const current = oldSnapshot.data();
+
+    if (current.patientId !== patientId) {
+      throw createAppointmentError('unauthenticated');
+    }
+
+    if (current.status !== 'booked' ||
+      !isFutureDate(current.appointmentDate)) {
+      throw createAppointmentError('cannot-cancel');
+    }
+
+    // archived records use a different ID so the original slot becomes available
+    const archiveId = `cancelled_${appointmentId}_${appointments.doc().id}`;
+    const archiveRef = appointments.doc(archiveId);
+
+    transaction.set(archiveRef, {
+      ...current,
+      status: 'cancelled',
+      originalAppointmentId: appointmentId,
+      cancelledAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    transaction.delete(oldRef);
+
+    return archiveRef.id;
+  });
 }
