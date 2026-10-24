@@ -111,7 +111,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { auth } from "@/services/firebase";
+import { auth , db } from "@/services/firebase";
 import PatientReminders from "@/components/patient/PatientReminders.vue";
 import {
   joinWalkInQueue,
