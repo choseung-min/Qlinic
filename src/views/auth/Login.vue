@@ -16,6 +16,47 @@
         <template v-if="isRegistering">
           <label for="display-name">Name</label>
           <input id="display-name" v-model.trim="displayName" type="text" required />
+
+          <label for="mobile-number">Mobile number</label>
+          <input
+            id="mobile-number"
+            v-model.trim="mobileNumber"
+            type="tel"
+            autocomplete="tel"
+            required
+          />
+
+          <label for="date-of-birth">Date of birth</label>
+          <input
+            id="date-of-birth"
+            v-model="dateOfBirth"
+            type="date"
+            autocomplete="bday"
+            required
+          />
+
+          <label for="sex">Sex</label>
+          <select id="sex" v-model="sex" required>
+            <option disabled value="">Select sex</option>
+            <option>Female</option>
+            <option>Male</option>
+            <option>Prefer not to say</option>
+          </select>
+
+          <label for="patient-identifier">
+            NRIC/FIN or patient identifier <span class="optional-label">(optional)</span>
+          </label>
+          <input id="patient-identifier" v-model.trim="patientIdentifier" type="text" />
+
+          <label for="address">
+            Residential address <span class="optional-label">(optional)</span>
+          </label>
+          <input id="address" v-model.trim="address" type="text" />
+
+          <label for="preferred-language">
+            Preferred language <span class="optional-label">(optional)</span>
+          </label>
+          <input id="preferred-language" v-model.trim="preferredLanguage" type="text" />
         </template>
 
         <label for="email">Email</label>
@@ -70,6 +111,12 @@ import { registerPatient, signInUser } from "@/services/auth";
 const router = useRouter();
 const isRegistering = ref(false);
 const displayName = ref("");
+const mobileNumber = ref("");
+const dateOfBirth = ref("");
+const sex = ref("");
+const patientIdentifier = ref("");
+const address = ref("");
+const preferredLanguage = ref("");
 const email = ref("");
 const password = ref("");
 const staffId = ref("");
@@ -86,6 +133,12 @@ async function handleSubmit() {
         displayName: displayName.value,
         email: email.value,
         password: password.value,
+        mobileNumber: mobileNumber.value,
+        dateOfBirth: dateOfBirth.value,
+        sex: sex.value,
+        patientIdentifier: patientIdentifier.value,
+        address: address.value,
+        preferredLanguage: preferredLanguage.value,
       });
     } else {
       const { role } = await signInUser({
@@ -143,16 +196,28 @@ legend {
   font-weight: 600;
 }
 
+.optional-label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+}
+
 input[type="email"],
 input[type="password"],
-input[type="text"] {
+input[type="text"],
+input[type="tel"],
+input[type="date"],
+select {
   border: 1px solid var(--color-border);
   border-radius: 7px;
   color: var(--color-text);
+  font: inherit;
   padding: 11px 12px;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: var(--color-primary);
   outline: 2px solid var(--color-primary-soft);
 }

@@ -1,6 +1,9 @@
 <template>
   <div id="nav">
-    <router-link class="brand" to="/">Qlinic</router-link>
+    <router-link class="brand" to="/">
+      <span class="brand-mark" aria-hidden="true">✚</span>
+      Qlinic
+    </router-link>
 
     <nav
       v-if="user && role === 'patient'"
@@ -53,7 +56,14 @@
         X
       </button>
       <h2 id="contact-title">Contact Us</h2>
-      <p>Call the clinic at <strong>+65 6123 4567</strong>.</p>
+      <div class="contact-detail">
+        <span aria-hidden="true">⌕</span>
+        <p><strong>Phone</strong><br />+65 6123 4567</p>
+      </div>
+      <div class="contact-detail">
+        <span aria-hidden="true">⌖</span>
+        <p><strong>Address</strong><br />123 Wellness Ave, Suite 200</p>
+      </div>
     </section>
   </div>
   <RouterView />
@@ -109,10 +119,25 @@ async function handleLogout() {
 }
 
 .brand {
+  align-items: center;
   color: var(--color-primary-dark) !important;
+  display: inline-flex;
   font-size: 18px !important;
   font-weight: 800 !important;
-  padding-left: 0 !important;
+  gap: 8px;
+  padding-left: 8px !important;
+}
+
+.brand-mark {
+  align-items: center;
+  background: var(--color-primary);
+  border-radius: 6px;
+  color: white;
+  display: inline-flex;
+  font-size: 12px;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
 }
 
 .patient-nav,
@@ -166,7 +191,22 @@ async function handleLogout() {
 
 .contact-dialog p {
   color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
   margin: 0;
+}
+
+.contact-detail {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.contact-detail > span {
+  color: var(--color-primary);
+  font-size: 20px;
+  line-height: 1;
 }
 
 .close-button {
