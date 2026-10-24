@@ -104,7 +104,7 @@
 
         <button
           class="confirm-button"
-          :disabled="!isFormValid || isSubmitting || isLoadingAvailability"
+          :disabled="!isFormValid || isSubmitting || isLoadingAvailability || isBooked"
           type="submit"
         >
           {{ isSubmitting ? "Booking..." : "Confirm Booking" }}
@@ -158,6 +158,7 @@ const availabilityError = ref("");
 const successMessage = ref("");
 const submissionError = ref("");
 const isSubmitting = ref(false);
+const isBooked = ref(false);
 const errors = reactive({ doctor: "", date: "", time: "", reason: "" });
 
 const minimumDate = computed(() => {
@@ -263,6 +264,9 @@ function validateForm() {
 }
 
 async function handleSubmit() {
+  if (isSubmitting.value || isBooked.value) {
+    return;
+  }
   successMessage.value = "";
   submissionError.value = "";
 
@@ -288,6 +292,7 @@ async function handleSubmit() {
       reasonForVisit: reasonForVisit.value,
     });
 
+    isBooked.value = true;
     successMessage.value = "Appointment booked successfully.";
     window.setTimeout(() => router.push({ name: "Main" }), 800);
   } catch (error) {
