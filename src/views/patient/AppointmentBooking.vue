@@ -77,6 +77,9 @@
           >
             No time slots are available for this date.
           </p>
+          <p v-if="lastUpdated" class="status-message">
+          Availability last updated: {{ lastUpdatedLabel }}
+          </p>
           <p v-if="errors.time" class="field-error" role="alert">
             {{ errors.time }}
           </p>
@@ -115,7 +118,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
   createAppointment,
@@ -159,6 +162,20 @@ const successMessage = ref("");
 const submissionError = ref("");
 const isSubmitting = ref(false);
 const isBooked = ref(false);
+const REFRESH_INTERVAL_MS = 120000;
+const lastUpdated = ref(null);
+let refreshTimer;
+const lastUpdatedLabel = computed(() => {
+  if (!lastUpdated.value) {
+    return "";
+  }
+
+  return lastUpdated.value.toLocaleTimeString("en-SG", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+});
 const errors = reactive({ doctor: "", date: "", time: "", reason: "" });
 
 const minimumDate = computed(() => {
@@ -224,6 +241,7 @@ async function loadAvailability() {
   clearTimeSlot();
   bookedTimeSlots.value = new Set();
   availabilityError.value = "";
+  lastUpdated.value = null;
 
   if (!selectedDoctor.value || !isFutureDate(selectedDate.value)) {
     return;
@@ -236,6 +254,7 @@ async function loadAvailability() {
       doctorId: selectedDoctor.value,
       appointmentDate: selectedDate.value,
     });
+    lastUpdated.value = new Date();
   } catch (error) {
     console.error(
       "Unable to load appointment availability:",
@@ -246,6 +265,42 @@ async function loadAvailability() {
     availabilityError.value = `Unable to load availability (${error.code || "unknown error"}).`;
   } finally {
     isLoadingAvailability.value = false;
+  }
+}
+
+async function refreshAvailability() {
+  const doctorId = selectedDoctor.value;
+  const date = selectedDate.value;
+
+  if (
+    !doctorId ||
+    !isFutureDate(date) ||
+    isLoadingAvailability.value ||
+    isSubmitting.value
+  ) {
+    return;
+  }
+
+  try {
+    const latestSlots = await getBookedTimeSlots({
+      doctorId,
+      appointmentDate: date,
+    });
+
+    if (doctorId !== selectedDoctor.value || date !== selectedDate.value) {
+      return;
+    }
+
+    bookedTimeSlots.value = latestSlots;
+    lastUpdated.value = new Date();
+    availabilityError.value = "";
+
+    if (selectedTimeSlot.value && latestSlots.has(selectedTimeSlot.value)) {
+      clearTimeSlot();
+      errors.time = "That time slot was just taken. Please choose another.";
+    }
+  } catch (error) {
+    console.error("Unable to refresh availability:", error);
   }
 }
 
@@ -325,7 +380,14 @@ function getBookingErrorMessage(error) {
 }
 
 watch([selectedDoctor, selectedDate], loadAvailability);
-onMounted(loadDoctors);
+onMounted(() => {
+  loadDoctors();
+  refreshTimer = window.setInterval(refreshAvailability, REFRESH_INTERVAL_MS);
+});
+
+onUnmounted(() => {
+  window.clearInterval(refreshTimer);
+});
 </script>
 
 <style scoped>
