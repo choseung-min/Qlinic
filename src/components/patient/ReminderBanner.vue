@@ -32,9 +32,9 @@ const visible = ref(true);
   gap: 12px;
   line-height: 1.4;
   margin: 16px auto;
-  max-width: 720px;
+  max-width: none;
   padding: 14px 16px;
-  width: calc(100% - 32px);
+  width: auto;
 }
 
 .reminder-icon {
