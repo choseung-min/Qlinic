@@ -1,20 +1,37 @@
 import { auth, db } from "./firebase";
 
-export async function registerPatient({ displayName, email, password }) {
+export async function registerPatient({
+  displayName,
+  email,
+  password,
+  mobileNumber,
+  dateOfBirth,
+  sex,
+  patientIdentifier,
+  address,
+  preferredLanguage,
+}) {
   const credential = await auth.createUserWithEmailAndPassword(email, password);
   const { uid } = credential.user;
 
   try {
-    await db.collection("users").doc(uid).set({
+    const profileData = {
       displayName,
       email,
+      mobileNumber,
+      dateOfBirth,
+      sex,
+      patientIdentifier,
+      address,
+      preferredLanguage,
+    };
+
+    await db.collection("users").doc(uid).set({
+      ...profileData,
       role: "patient",
     });
 
-    await db.collection("patients").doc(uid).set({
-      displayName,
-      email,
-    });
+    await db.collection("patients").doc(uid).set(profileData);
   } catch (error) {
     await credential.user.delete().catch(() => {
       // Keep the original Firestore error for the user if cleanup is denied.
