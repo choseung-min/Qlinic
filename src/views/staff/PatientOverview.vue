@@ -21,6 +21,44 @@
                     aria-label="Search patient name">
             </div>
 
+            <!-- 5B doctor, visit type, status and medicine filters -->
+            <div class="filters-row">
+                <select v-model="doctorFilter" class="filter-select" aria-label="Filter by doctor">
+                    <option value="">All Doctors</option>
+                    <option v-for="doctor in doctorOptions" :key="doctor" :value="doctor">
+                        {{ doctor }}
+                    </option>
+                    <option v-if="hasUnassignedDoctor" value="__unassigned__">Unassigned</option>
+                </select>
+
+                <select v-model="typeFilter" class="filter-select" aria-label="Filter by visit type">
+                    <option value="">All Types</option>
+                    <option value="Appointment">Appointment</option>
+                    <option value="Walk-in">Walk-in</option>
+                </select>
+
+                <select v-model="statusFilter" class="filter-select" aria-label="Filter by visit status">
+                    <option value="">All Statuses</option>
+                    <option v-for="status in statusOptions" :key="status" :value="status">
+                        {{ status }}
+                    </option>
+                </select>
+
+                <select v-model="medicineFilter" class="filter-select" aria-label="Filter by medicine status">
+                    <option value="">All Medicine</option>
+                    <option v-for="status in medicineOptions" :key="status" :value="status">
+                        {{ status }}
+                    </option>
+                    <option v-if="hasNoMedicine" value="__none__">No Medicine</option>
+                </select>
+            </div>
+
+            <div v-if="hasActiveFilters" class="clear-filters-row">
+                <button type="button" class="clear-filters-button" @click="clearFilters">
+                    Clear Filters
+                </button>
+            </div>
+
             <p v-if="loading" class="table-message">
                 Loading patients...
             </p>
@@ -98,6 +136,10 @@ export default {
         return {
             visits: [],
             searchQuery: '',
+            doctorFilter: '',
+            typeFilter: '',
+            statusFilter: '',
+            medicineFilter: '',
             today: '',
             loading: true,
             errorMessage: '',
@@ -109,16 +151,65 @@ export default {
 
     computed: {
         // 5A filter patients by name
+        // 5B combine the search with doctor, type, status and medicine filters
         filteredVisits() {
             const query = this.searchQuery.trim().toLowerCase();
 
-            if (!query) {
-                return this.visits;
-            }
-
             return this.visits.filter((visit) => {
-                return visit.patientName.toLowerCase().includes(query);
+                const matchesName = visit.patientName.toLowerCase().includes(query);
+
+                const matchesDoctor = !this.doctorFilter ||
+                    (this.doctorFilter === '__unassigned__'
+                        ? visit.doctorName === '—'
+                        : visit.doctorName === this.doctorFilter);
+
+                const matchesType = !this.typeFilter ||
+                    this.formatVisitType(visit.visitType) === this.typeFilter;
+
+                const matchesStatus = !this.statusFilter ||
+                    visit.visitStatus === this.statusFilter;
+
+                const matchesMedicine = !this.medicineFilter ||
+                    (this.medicineFilter === '__none__'
+                        ? !visit.medicineStatus
+                        : visit.medicineStatus === this.medicineFilter);
+
+                return matchesName && matchesDoctor && matchesType &&
+                    matchesStatus && matchesMedicine;
             });
+        },
+
+        // 5B populate filter options from current visits
+        doctorOptions() {
+            return [...new Set(this.visits
+                .map((visit) => visit.doctorName)
+                .filter((name) => name && name !== '—'))]
+                .sort((a, b) => a.localeCompare(b));
+        },
+
+        hasUnassignedDoctor() {
+            return this.visits.some((visit) => visit.doctorName === '—');
+        },
+
+        statusOptions() {
+            return [...new Set(this.visits.map((visit) => visit.visitStatus))]
+                .sort((a, b) => a.localeCompare(b));
+        },
+
+        medicineOptions() {
+            return [...new Set(this.visits
+                .map((visit) => visit.medicineStatus)
+                .filter(Boolean))]
+                .sort((a, b) => a.localeCompare(b));
+        },
+
+        hasNoMedicine() {
+            return this.visits.some((visit) => !visit.medicineStatus);
+        },
+
+        hasActiveFilters() {
+            return !!(this.searchQuery || this.doctorFilter || this.typeFilter ||
+                this.statusFilter || this.medicineFilter);
         }
     },
 
@@ -148,6 +239,15 @@ export default {
     },
 
     methods: {
+        // 5B clear all search and filter selections
+        clearFilters() {
+            this.searchQuery = '';
+            this.doctorFilter = '';
+            this.typeFilter = '';
+            this.statusFilter = '';
+            this.medicineFilter = '';
+        },
+
         // 9A retrieve and display today's patient visits
         listenForVisits() {
             this.loading = true;
@@ -180,6 +280,7 @@ export default {
 
                                         if (patientDoc.exists) {
                                             const patient = patientDoc.data();
+
                                             patientName = patient.displayName ||
                                                 patient.fullName ||
                                                 patient.name ||
@@ -409,6 +510,49 @@ export default {
     border-color: #178b87;
 }
 
+/* 5B filters */
+.filters-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.filter-select {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid #e8edf2;
+    border-radius: 6px;
+    background: white;
+    color: #172b46;
+    font-size: 13px;
+}
+
+.filter-select:focus {
+    outline: 2px solid #178b87;
+    outline-offset: 1px;
+}
+
+.clear-filters-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+}
+
+.clear-filters-button {
+    border: none;
+    background: none;
+    color: #178b87;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px;
+}
+
+.clear-filters-button:hover {
+    text-decoration: underline;
+}
+
 .table-container {
     overflow-x: auto;
 }
@@ -485,7 +629,17 @@ export default {
     color: #b42318;
 }
 
+@media (max-width: 900px) {
+    .filters-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 600px) {
+    .filters-row {
+        grid-template-columns: 1fr;
+    }
+
     .patient-overview {
         padding: 20px 16px;
     }
