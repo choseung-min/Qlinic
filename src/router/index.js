@@ -7,6 +7,7 @@ import PersonalDetails from "@/views/patient/PersonalDetails.vue";
 import Login from "@/views/auth/Login.vue";
 import StaffMain from "@/views/staff/Main.vue";
 import PatientOverview from "@/views/staff/PatientOverview.vue";
+import MedicineCollection from "@/views/staff/MedicineCollection.vue";
 import { auth, db } from "@/services/firebase";
 
 const routes = [
@@ -31,6 +32,12 @@ const routes = [
     path: "/staff/patient-overview",
     name: "StaffPatientOverview",
     component: PatientOverview,
+    meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/staff/medicine-collection",
+    name: "StaffMedicineCollection",
+    component: MedicineCollection,
     meta: { requiresAuth: true, role: "staff" },
   },
   {
