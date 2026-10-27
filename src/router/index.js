@@ -6,6 +6,7 @@ import Main from "@/views/patient/Main.vue";
 import PersonalDetails from "@/views/patient/PersonalDetails.vue";
 import Login from "@/views/auth/Login.vue";
 import StaffMain from "@/views/staff/Main.vue";
+import DoctorMain from "@/views/doctor/Main.vue";
 import { auth, db } from "@/services/firebase";
 
 const routes = [
@@ -25,6 +26,12 @@ const routes = [
     name: "StaffMain",
     component: StaffMain,
     meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/doctor",
+    name: "DoctorMain",
+    component: DoctorMain,
+    meta: { requiresAuth: true, role: "doctor" },
   },
   {
     path: "/appointment-booking",
@@ -88,6 +95,10 @@ router.beforeEach(async (to) => {
   if (role !== to.meta.role) {
     if (role === "staff") {
       return { name: "StaffMain" };
+    }
+
+    if (role === "doctor") {
+      return { name: "DoctorMain" };
     }
 
     if (role === "patient") {
