@@ -6,6 +6,7 @@ import Main from "@/views/patient/Main.vue";
 import PersonalDetails from "@/views/patient/PersonalDetails.vue";
 import Login from "@/views/auth/Login.vue";
 import StaffMain from "@/views/staff/Main.vue";
+import PatientOverview from "@/views/staff/PatientOverview.vue";
 import { auth, db } from "@/services/firebase";
 
 const routes = [
@@ -24,6 +25,12 @@ const routes = [
     path: "/staff",
     name: "StaffMain",
     component: StaffMain,
+    meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/staff/patient-overview",
+    name: "StaffPatientOverview",
+    component: PatientOverview,
     meta: { requiresAuth: true, role: "staff" },
   },
   {
