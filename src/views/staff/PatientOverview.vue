@@ -10,6 +10,17 @@
                 Today's visits · {{ formatDisplayDate(today) }}
             </p>
 
+            <!-- 5A patient name search -->
+            <div class="search-box">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="M20 20l-4-4"></path>
+                </svg>
+                <input type="search" v-model="searchQuery" placeholder="Search patient name..."
+                    aria-label="Search patient name">
+            </div>
+
             <p v-if="loading" class="table-message">
                 Loading patients...
             </p>
@@ -20,6 +31,10 @@
 
             <p v-else-if="visits.length === 0" class="table-message">
                 No patient visits found for today
+            </p>
+
+            <p v-else-if="filteredVisits.length === 0" class="table-message">
+                No matching patients found
             </p>
 
             <div v-else class="table-container">
@@ -36,7 +51,7 @@
                     </thead>
 
                     <tbody>
-                        <tr v-for="visit in visits" :key="visit.id">
+                        <tr v-for="visit in filteredVisits" :key="visit.id">
                             <td class="queue-number">
                                 {{ visit.queueNumber || '—' }}
                             </td>
@@ -82,6 +97,7 @@ export default {
     data() {
         return {
             visits: [],
+            searchQuery: '',
             today: '',
             loading: true,
             errorMessage: '',
@@ -89,6 +105,21 @@ export default {
             unsubscribeVisits: null,
             loadVersion: 0
         };
+    },
+
+    computed: {
+        // 5A filter patients by name
+        filteredVisits() {
+            const query = this.searchQuery.trim().toLowerCase();
+
+            if (!query) {
+                return this.visits;
+            }
+
+            return this.visits.filter((visit) => {
+                return visit.patientName.toLowerCase().includes(query);
+            });
+        }
     },
 
     mounted() {
@@ -342,6 +373,40 @@ export default {
     color: #73829a;
     font-size: 13px;
     margin: 0 0 16px;
+}
+
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid #e8edf2;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 16px;
+}
+
+.search-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: #75839a;
+}
+
+.search-box input {
+    width: 100%;
+    border: none;
+    outline: none;
+    color: #172b46;
+    background: transparent;
+    font-size: 13px;
+}
+
+.search-box input::placeholder {
+    color: #75839a;
+}
+
+.search-box:focus-within {
+    border-color: #178b87;
 }
 
 .table-container {
