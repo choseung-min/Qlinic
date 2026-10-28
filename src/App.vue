@@ -23,6 +23,10 @@
         >Staff Main</router-link
       >
 
+      <router-link v-if="user && role === 'doctor'" to="/doctor"
+        >Doctor Main</router-link
+      >
+
       <button
         v-if="user"
         class="contact-button"
