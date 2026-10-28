@@ -2,7 +2,11 @@
   <main class="page auth-page">
     <section class="card auth-card">
       <header class="page-header">
-        <h1>{{ isRegistering ? "Create your patient account" : "Welcome to Qlinic" }}</h1>
+        <h1>
+          {{
+            isRegistering ? "Create your patient account" : "Welcome to Qlinic"
+          }}
+        </h1>
         <p>
           {{
             isRegistering
@@ -15,7 +19,12 @@
       <form @submit.prevent="handleSubmit">
         <template v-if="isRegistering">
           <label for="display-name">Name</label>
-          <input id="display-name" v-model.trim="displayName" type="text" required />
+          <input
+            id="display-name"
+            v-model.trim="displayName"
+            type="text"
+            required
+          />
 
           <label for="mobile-number">Mobile number</label>
           <input
@@ -44,9 +53,14 @@
           </select>
 
           <label for="patient-identifier">
-            NRIC/FIN or patient identifier <span class="optional-label">(optional)</span>
+            NRIC/FIN or patient identifier
+            <span class="optional-label">(optional)</span>
           </label>
-          <input id="patient-identifier" v-model.trim="patientIdentifier" type="text" />
+          <input
+            id="patient-identifier"
+            v-model.trim="patientIdentifier"
+            type="text"
+          />
 
           <label for="address">
             Residential address <span class="optional-label">(optional)</span>
@@ -56,7 +70,11 @@
           <label for="preferred-language">
             Preferred language <span class="optional-label">(optional)</span>
           </label>
-          <input id="preferred-language" v-model.trim="preferredLanguage" type="text" />
+          <input
+            id="preferred-language"
+            v-model.trim="preferredLanguage"
+            type="text"
+          />
         </template>
 
         <label for="email">Email</label>
@@ -66,12 +84,12 @@
         <input id="password" v-model="password" type="password" required />
 
         <template v-if="!isRegistering">
-          <label for="staff-id">Staff ID</label>
+          <label for="staff-id">Staff or doctor ID</label>
           <input
             id="staff-id"
             v-model.trim="staffId"
             type="text"
-            placeholder="Leave blank if you are a patient"
+            placeholder="Optional for patients"
           />
         </template>
 
@@ -92,7 +110,11 @@
         </button>
       </form>
 
-      <button class="button-secondary mode-button" type="button" @click="toggleMode">
+      <button
+        class="button-secondary mode-button"
+        type="button"
+        @click="toggleMode"
+      >
         {{
           isRegistering
             ? "Already have an account? Sign in"
@@ -147,7 +169,14 @@ async function handleSubmit() {
         staffId: staffId.value,
       });
 
-      await router.push({ name: role === "staff" ? "StaffMain" : "Main" });
+      await router.push({
+        name:
+          role === "doctor"
+            ? "DoctorMain"
+            : role === "staff"
+              ? "StaffMain"
+              : "Main",
+      });
       return;
     }
 
@@ -158,7 +187,7 @@ async function handleSubmit() {
         ? "The email or password is incorrect."
         : error.code === "auth/email-already-in-use"
           ? "An account already exists for this email."
-        : error.message || "Unable to sign in. Please try again.";
+          : error.message || "Unable to sign in. Please try again.";
   } finally {
     isSubmitting.value = false;
   }
