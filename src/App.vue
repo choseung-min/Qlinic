@@ -1,5 +1,5 @@
 <template>
-  <div id="nav">
+  <div v-if="role !== 'doctor'" id="nav">
     <router-link class="brand" to="/">
       <span class="brand-mark" aria-hidden="true">✚</span>
       Qlinic
