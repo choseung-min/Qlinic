@@ -4,6 +4,135 @@ import { auth, db } from "@/services/firebase";
 const CONSULTATION_STATUS = "Ongoing";
 const IN_CONSULTATION_STATUS = "In Consultation";
 
+export async function updateConsultationDetails({
+  consultationId,
+  doctorId,
+  diagnosis,
+  notes,
+  medication,
+  noMedicationRequired,
+}) {
+  if (!consultationId || !doctorId) {
+    throw new Error("A consultation and doctor are required.");
+  }
+
+  const normalizedDiagnosis = String(diagnosis || "").trim();
+  const normalizedNotes = String(notes || "").trim();
+  const normalizedMedication = String(medication || "").trim();
+
+  if (!normalizedDiagnosis) {
+    throw new Error("Enter a diagnosis before saving.");
+  }
+
+  if (noMedicationRequired && normalizedMedication) {
+    throw new Error(
+      "Clear the medication details before selecting no medication required.",
+    );
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("You must be signed in to save consultation details.");
+  }
+
+  const userSnapshot = await db.collection("users").doc(currentUser.uid).get();
+  const userData = userSnapshot.data() || {};
+  if (
+    userData.role !== "doctor"
+    || (userData.doctorId || userData.doctorID) !== doctorId
+  ) {
+    throw new Error("You are not authorized to edit this consultation.");
+  }
+
+  const consultationRef = db.collection("consultations").doc(consultationId);
+  const visitRef = db.collection("visits").doc(consultationId);
+
+  console.info("[Consultation] Saving consultation details.", {
+    operation: "transaction",
+    consultationPath: `consultations/${consultationId}`,
+    visitPath: `visits/${consultationId}`,
+    doctorId,
+    authenticatedUid: currentUser.uid,
+    updateFields: [
+      "diagnosis",
+      "notes",
+      "medication",
+      "noMedicationRequired",
+      "updatedAt",
+    ],
+    usesServerTimestamp: true,
+  });
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const [consultationSnapshot, visitSnapshot] = await Promise.all([
+        transaction.get(consultationRef),
+        transaction.get(visitRef),
+      ]);
+
+      console.info("[Consultation] Save transaction reads completed.", {
+        consultationExists: consultationSnapshot.exists,
+        visitExists: visitSnapshot.exists,
+      });
+
+      if (!consultationSnapshot.exists) {
+        throw new Error("The consultation could not be found.");
+      }
+
+      if (!visitSnapshot.exists) {
+        throw new Error("The consultation's visit could not be found.");
+      }
+
+      const consultation = consultationSnapshot.data() || {};
+      const visit = visitSnapshot.data() || {};
+      console.info("[Consultation] Save authorization fields checked.", {
+        consultationDoctorId: consultation.doctorId || null,
+        requestedDoctorId: doctorId,
+        consultationVisitId: consultation.visitId || null,
+        selectedVisitId: consultationId,
+        consultationStatus: consultation.status || null,
+        visitDoctorId: visit.doctorId || null,
+        visitStatus: visit.visitStatus || null,
+        patientIdsMatch: consultation.patientId === visit.patientId,
+      });
+      if (
+        consultation.doctorId !== doctorId
+        || consultation.visitId !== consultationId
+        || consultation.patientId !== visit.patientId
+        || visit.doctorId !== doctorId
+      ) {
+        throw new Error("You are not authorized to edit this consultation.");
+      }
+
+      if (
+        consultation.status !== CONSULTATION_STATUS
+        || visit.visitStatus !== IN_CONSULTATION_STATUS
+      ) {
+        throw new Error("Only an ongoing consultation can be edited.");
+      }
+
+      transaction.update(consultationRef, {
+        diagnosis: normalizedDiagnosis,
+        notes: normalizedNotes,
+        medication: noMedicationRequired ? "" : normalizedMedication,
+        noMedicationRequired: Boolean(noMedicationRequired),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    console.error("[Consultation] Save transaction failed.", {
+      operation: "update",
+      consultationPath: `consultations/${consultationId}`,
+      visitPath: `visits/${consultationId}`,
+      doctorId,
+      authenticatedUid: currentUser.uid,
+      errorCode: error?.code || "unknown",
+      errorMessage: error?.message || "Unknown Firestore error",
+    });
+    throw error;
+  }
+}
+
 export async function startConsultation({ visitId, doctorId }) {
   if (!visitId || !doctorId) {
     throw new Error("A visit and doctor are required to start a consultation.");
