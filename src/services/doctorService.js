@@ -248,7 +248,11 @@ export function watchDoctorQueue({ doctorId, visitDate, onChange, onError }) {
           ],
         });
         const visits = rawVisits
-          .filter((visit) => visit.visitStatus !== "Completed")
+          .filter(
+            (visit) =>
+              visit.visitStatus !== "Completed"
+              && visit.visitStatus !== "Awaiting Medicine",
+          )
           .sort(compareQueueOrder);
         console.info("[DoctorDashboard] Visits after status filtering.", {
           before: rawVisits.length,
