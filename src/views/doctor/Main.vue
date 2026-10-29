@@ -63,7 +63,7 @@
               <p>{{ visitDescription(nextPatient) }}</p>
               <span class="status-badge">{{ nextPatient.visitStatus }}</span>
             </div>
-            <button class="details-button" type="button" disabled title="Patient details are not available yet">
+            <button class="details-button" type="button" @click="openPatient(nextPatient.id)">
               <span aria-hidden="true">◉</span>
               View Details
             </button>
@@ -88,7 +88,7 @@
               <span class="status-badge" :class="statusClass(visit.visitStatus)">
                 {{ visit.visitStatus }}
               </span>
-              <button class="view-button" type="button" disabled title="Patient details are not available yet">
+              <button class="view-button" type="button" @click="openPatient(visit.id)">
                 <span aria-hidden="true">◉</span>
                 View
               </button>
@@ -106,6 +106,8 @@ import { useRouter } from "vue-router";
 import { auth } from "@/services/firebase";
 import { signOutUser } from "@/services/auth";
 import {
+  getClinicDate,
+  resolveDoctorForUser,
   resolveDoctorForUser,
   updateDoctorAvailability,
   watchDoctorAvailability,
@@ -187,7 +189,7 @@ onMounted(() => {
       );
       unsubscribeQueue = watchDoctorQueue({
         doctorId: doctorRecord.id,
-        visitDate: getLocalDate(),
+        visitDate: getClinicDate(),
         onChange: (queue) => {
           visits.value = queue;
           isLoading.value = false;
@@ -248,13 +250,6 @@ async function handleLogout() {
   }
 }
 
-function getLocalDate() {
-  const date = new Date();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
 function formatQueueNumber(queueNumber) {
   return queueNumber == null ? "—" : String(queueNumber).padStart(2, "0");
 }
@@ -269,6 +264,11 @@ function statusClass(status) {
   return String(status).toLowerCase().replaceAll(" ", "-");
 }
 
+function openPatient(visitId) {
+  router.push({
+    name: "DoctorPatientInformation",
+    params: { visitId },
+  });
 function normalizeAvailability(status) {
   return String(status).toLowerCase().replaceAll("_", " ") === "on break"
     ? "On Break"

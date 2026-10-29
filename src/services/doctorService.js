@@ -152,6 +152,20 @@ export async function getDoctor(doctorId) {
   };
 }
 
+export function getClinicDate(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
 export function watchDoctorAvailability(doctorId, onChange, onError) {
   if (!doctorId) {
     throw new Error("A doctor ID is required.");
@@ -208,14 +222,37 @@ export function watchDoctorQueue({ doctorId, visitDate, onChange, onError }) {
       try {
         console.info("[DoctorDashboard] Assigned visits snapshot received.", {
           count: snapshot.size,
+          resolvedDoctorId: doctorId,
+          visitDate,
         });
-        const visits = snapshot.docs
-          .map((document) => ({
-            id: document.id,
-            ...document.data(),
-          }))
+        const rawVisits = snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        }));
+        console.info("[DoctorDashboard] Assigned visit fields summary.", {
+          count: rawVisits.length,
+          missingPatientId: rawVisits.filter((visit) => !visit.patientId).length,
+          missingVisitStatus: rawVisits.filter((visit) => !visit.visitStatus)
+            .length,
+          missingQueueNumber: rawVisits.filter(
+            (visit) => visit.queueNumber == null,
+          ).length,
+          missingQueueOrder: rawVisits.filter(
+            (visit) => visit.queueOrder == null,
+          ).length,
+          statuses: [...new Set(rawVisits.map((visit) => visit.visitStatus))],
+          visitDateTypes: [
+            ...new Set(rawVisits.map((visit) => typeof visit.visitDate)),
+          ],
+        });
+        const visits = rawVisits
           .filter((visit) => visit.visitStatus !== "Completed")
           .sort(compareQueueOrder);
+        console.info("[DoctorDashboard] Visits after status filtering.", {
+          before: rawVisits.length,
+          after: visits.length,
+          removedCompleted: rawVisits.length - visits.length,
+        });
 
         const patientIds = [
           ...new Set(visits.map((visit) => visit.patientId).filter(Boolean)),
