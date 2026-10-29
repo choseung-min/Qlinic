@@ -108,7 +108,6 @@ import { signOutUser } from "@/services/auth";
 import {
   getClinicDate,
   resolveDoctorForUser,
-  resolveDoctorForUser,
   updateDoctorAvailability,
   watchDoctorAvailability,
   watchDoctorQueue,
@@ -269,6 +268,8 @@ function openPatient(visitId) {
     name: "DoctorPatientInformation",
     params: { visitId },
   });
+}
+
 function normalizeAvailability(status) {
   return String(status).toLowerCase().replaceAll("_", " ") === "on break"
     ? "On Break"

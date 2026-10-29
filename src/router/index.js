@@ -10,6 +10,7 @@ import PatientOverview from "@/views/staff/PatientOverview.vue";
 import MedicineCollection from "@/views/staff/MedicineCollection.vue";
 import DoctorMain from "@/views/doctor/Main.vue";
 import DoctorPatientInformation from "@/views/doctor/PatientInformation.vue";
+import DoctorConsultation from "@/views/doctor/Consultation.vue";
 import { auth, db } from "@/services/firebase";
 
 const routes = [
@@ -41,6 +42,8 @@ const routes = [
     name: "StaffMedicineCollection",
     component: MedicineCollection,
     meta: { requiresAuth: true, role: "staff" },
+  },
+  {
     path: "/doctor",
     name: "DoctorMain",
     component: DoctorMain,
@@ -50,6 +53,12 @@ const routes = [
     path: "/doctor/patients/:visitId",
     name: "DoctorPatientInformation",
     component: DoctorPatientInformation,
+    meta: { requiresAuth: true, role: "doctor" },
+  },
+  {
+    path: "/doctor/consultations/:consultationId",
+    name: "DoctorConsultation",
+    component: DoctorConsultation,
     meta: { requiresAuth: true, role: "doctor" },
   },
   {
