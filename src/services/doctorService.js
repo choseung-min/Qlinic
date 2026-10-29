@@ -166,6 +166,8 @@ export function getClinicDate(date = new Date()) {
   );
 
   return `${values.year}-${values.month}-${values.day}`;
+}
+
 export function watchDoctorAvailability(doctorId, onChange, onError) {
   if (!doctorId) {
     throw new Error("A doctor ID is required.");

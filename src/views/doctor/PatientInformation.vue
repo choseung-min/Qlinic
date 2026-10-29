@@ -99,8 +99,13 @@
           </article>
         </section>
 
-        <button class="start-button" type="button" disabled title="Consultations are not available yet">
-          Start Consultation
+        <button
+          class="start-button"
+          type="button"
+          :disabled="isStartingConsultation"
+          @click="handleStartConsultation"
+        >
+          {{ isStartingConsultation ? "Starting..." : "Start Consultation" }}
         </button>
       </template>
     </main>
@@ -114,6 +119,7 @@ import { auth } from "@/services/firebase";
 import { signOutUser } from "@/services/auth";
 import { resolveDoctorForUser } from "@/services/doctorService";
 import { getDoctorPatientDetails } from "@/services/doctorPatientService";
+import { startConsultation } from "@/services/consultationService";
 
 const DetailItem = defineComponent({
   props: {
@@ -147,6 +153,7 @@ const consultations = ref([]);
 const consultationError = ref("");
 const isLoading = ref(true);
 const errorMessage = ref("");
+const isStartingConsultation = ref(false);
 let unsubscribeAuth;
 
 onMounted(() => {
@@ -184,6 +191,32 @@ onMounted(() => {
 });
 
 onUnmounted(() => unsubscribeAuth?.());
+
+async function handleStartConsultation() {
+  if (isStartingConsultation.value || !doctor.value.id || !visit.value.id) {
+    return;
+  }
+
+  isStartingConsultation.value = true;
+  errorMessage.value = "";
+  try {
+    const result = await startConsultation({
+      visitId: visit.value.id,
+      doctorId: doctor.value.id,
+    });
+    await router.push({
+      name: "DoctorConsultation",
+      params: { consultationId: result.id },
+    });
+  } catch (error) {
+    console.error("Unable to start consultation.", error);
+    errorMessage.value = error.code === "permission-denied"
+      ? "You do not have permission to start this consultation."
+      : error.message || "Unable to start consultation.";
+  } finally {
+    isStartingConsultation.value = false;
+  }
+}
 
 async function handleLogout() {
   try {
