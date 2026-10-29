@@ -166,6 +166,37 @@ export function getClinicDate(date = new Date()) {
   );
 
   return `${values.year}-${values.month}-${values.day}`;
+export function watchDoctorAvailability(doctorId, onChange, onError) {
+  if (!doctorId) {
+    throw new Error("A doctor ID is required.");
+  }
+
+  return db.collection("doctors").doc(doctorId).onSnapshot(
+    (snapshot) => {
+      if (!snapshot.exists) {
+        onError(new Error("The doctor profile could not be found."));
+        return;
+      }
+
+      onChange({
+        id: snapshot.id,
+        ...snapshot.data(),
+      });
+    },
+    onError,
+  );
+}
+
+export async function updateDoctorAvailability(doctorId, availabilityStatus) {
+  const allowedStatuses = new Set(["Available", "On Break"]);
+
+  if (!doctorId || !allowedStatuses.has(availabilityStatus)) {
+    throw new Error("Invalid doctor availability update.");
+  }
+
+  await db.collection("doctors").doc(doctorId).update({
+    availabilityStatus,
+  });
 }
 
 export function watchDoctorQueue({ doctorId, visitDate, onChange, onError }) {

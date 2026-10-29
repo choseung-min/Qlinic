@@ -37,12 +37,20 @@
           </div>
           <div class="availability-controls">
             <span class="availability-badge">{{ availabilityLabel }}</span>
-            <button class="break-button" type="button" disabled title="Availability management is not available yet">
+            <button
+              class="break-button"
+              type="button"
+              :disabled="isUpdatingAvailability"
+              @click="toggleAvailability"
+            >
               <span aria-hidden="true">☕</span>
-              Go On Break
+              {{ isUpdatingAvailability ? "Saving..." : availabilityActionLabel }}
             </button>
           </div>
         </header>
+        <p v-if="availabilityError" class="message error-message" role="alert">
+          {{ availabilityError }}
+        </p>
 
         <section class="next-patient-panel" aria-labelledby="next-patient-title">
           <h2 id="next-patient-title">NEXT PATIENT</h2>
@@ -100,6 +108,9 @@ import { signOutUser } from "@/services/auth";
 import {
   getClinicDate,
   resolveDoctorForUser,
+  resolveDoctorForUser,
+  updateDoctorAvailability,
+  watchDoctorAvailability,
   watchDoctorQueue,
 } from "@/services/doctorService";
 
@@ -109,15 +120,22 @@ const doctor = ref({});
 const visits = ref([]);
 const isLoading = ref(true);
 const errorMessage = ref("");
+const availabilityError = ref("");
+const isUpdatingAvailability = ref(false);
 let unsubscribeAuth;
 let unsubscribeQueue;
+let unsubscribeDoctor;
 
 const nextPatient = computed(
   () => visits.value.find((visit) => visit.visitStatus === "Waiting") || null,
 );
 const availabilityLabel = computed(() => {
+  if (doctor.value.availabilityStatus) {
+    return normalizeAvailability(doctor.value.availabilityStatus);
+  }
+
   if (doctor.value.availability) {
-    return doctor.value.availability;
+    return normalizeAvailability(doctor.value.availability);
   }
 
   if (doctor.value.available === false) {
@@ -126,14 +144,22 @@ const availabilityLabel = computed(() => {
 
   return "Available";
 });
+const availabilityActionLabel = computed(() =>
+  availabilityLabel.value === "On Break"
+    ? "Return to Available"
+    : "Go On Break",
+);
 
 onMounted(() => {
   unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
     user.value = firebaseUser;
     unsubscribeQueue?.();
+    unsubscribeDoctor?.();
     unsubscribeQueue = null;
+    unsubscribeDoctor = null;
     isLoading.value = true;
     errorMessage.value = "";
+    availabilityError.value = "";
 
     if (!firebaseUser) {
       await router.push({ name: "Login" });
@@ -147,6 +173,20 @@ onMounted(() => {
       }
 
       doctor.value = doctorRecord;
+      unsubscribeDoctor = watchDoctorAvailability(
+        doctorRecord.id,
+        (updatedDoctor) => {
+          doctor.value = updatedDoctor;
+          availabilityError.value = "";
+        },
+        (error) => {
+          console.error("Unable to synchronize doctor availability.", error);
+          availabilityError.value =
+            error.code === "permission-denied"
+              ? "You do not have permission to read doctor availability."
+              : "Unable to synchronize doctor availability.";
+        },
+      );
       unsubscribeQueue = watchDoctorQueue({
         doctorId: doctorRecord.id,
         visitDate: getClinicDate(),
@@ -170,8 +210,35 @@ onMounted(() => {
 
 onUnmounted(() => {
   unsubscribeQueue?.();
+  unsubscribeDoctor?.();
   unsubscribeAuth?.();
 });
+
+async function toggleAvailability() {
+  if (!doctor.value.id || isUpdatingAvailability.value) {
+    return;
+  }
+
+  const nextStatus =
+    availabilityLabel.value === "On Break" ? "Available" : "On Break";
+  isUpdatingAvailability.value = true;
+  availabilityError.value = "";
+
+  try {
+    await updateDoctorAvailability(doctor.value.id, nextStatus);
+  } catch (error) {
+    console.error("Unable to update doctor availability.", {
+      code: error.code,
+      message: error.message,
+    });
+    availabilityError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to change your availability."
+        : "Unable to update your availability. Please try again.";
+  } finally {
+    isUpdatingAvailability.value = false;
+  }
+}
 
 async function handleLogout() {
   try {
@@ -202,6 +269,10 @@ function openPatient(visitId) {
     name: "DoctorPatientInformation",
     params: { visitId },
   });
+function normalizeAvailability(status) {
+  return String(status).toLowerCase().replaceAll("_", " ") === "on break"
+    ? "On Break"
+    : "Available";
 }
 </script>
 
