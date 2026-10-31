@@ -4,6 +4,134 @@ import { auth, db } from "@/services/firebase";
 const CONSULTATION_STATUS = "Ongoing";
 const IN_CONSULTATION_STATUS = "In Consultation";
 
+export async function completeConsultation({
+  consultationId,
+  doctorId,
+  diagnosis,
+  notes,
+  medication,
+  noMedicationRequired,
+}) {
+  if (!consultationId || !doctorId) {
+    throw new Error("A consultation and doctor are required.");
+  }
+
+  const normalizedDiagnosis = String(diagnosis || "").trim();
+  const normalizedNotes = String(notes || "").trim();
+  const normalizedMedication = String(medication || "").trim();
+  const hasNoMedication = Boolean(noMedicationRequired);
+
+  if (!normalizedDiagnosis) {
+    throw new Error("Enter a diagnosis before completing the consultation.");
+  }
+
+  if (!hasNoMedication && !normalizedMedication) {
+    throw new Error(
+      "Enter medication details or select no medication required.",
+    );
+  }
+
+  if (hasNoMedication && normalizedMedication) {
+    throw new Error(
+      "Clear the medication details before selecting no medication required.",
+    );
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("You must be signed in to complete this consultation.");
+  }
+
+  const userSnapshot = await db.collection("users").doc(currentUser.uid).get();
+  const userData = userSnapshot.data() || {};
+  if (
+    userData.role !== "doctor"
+    || (userData.doctorId || userData.doctorID) !== doctorId
+  ) {
+    throw new Error("You are not authorized to complete this consultation.");
+  }
+
+  const consultationRef = db.collection("consultations").doc(consultationId);
+  const visitRef = db.collection("visits").doc(consultationId);
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const [consultationSnapshot, visitSnapshot] = await Promise.all([
+        transaction.get(consultationRef),
+        transaction.get(visitRef),
+      ]);
+
+      if (!consultationSnapshot.exists) {
+        throw new Error("The consultation could not be found.");
+      }
+
+      if (!visitSnapshot.exists) {
+        throw new Error("The consultation's visit could not be found.");
+      }
+
+      const consultation = consultationSnapshot.data() || {};
+      const visit = visitSnapshot.data() || {};
+      if (
+        consultation.doctorId !== doctorId
+        || consultation.visitId !== consultationId
+        || consultation.patientId !== visit.patientId
+        || visit.doctorId !== doctorId
+      ) {
+        throw new Error("You are not authorized to complete this consultation.");
+      }
+
+      if (consultation.status === "Completed") {
+        throw new Error("This consultation has already been completed.");
+      }
+
+      if (
+        consultation.status !== CONSULTATION_STATUS
+        || visit.visitStatus !== IN_CONSULTATION_STATUS
+      ) {
+        throw new Error("Only an ongoing consultation can be completed.");
+      }
+
+      const finalVisitStatus = hasNoMedication
+        ? "Completed"
+        : "Awaiting Medicine";
+      const consultationUpdate = {
+        diagnosis: normalizedDiagnosis,
+        notes: normalizedNotes,
+        medication: hasNoMedication ? "" : normalizedMedication,
+        noMedicationRequired: hasNoMedication,
+        status: "Completed",
+        completedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+      const visitUpdate = {
+        visitStatus: finalVisitStatus,
+      };
+
+      if (hasNoMedication) {
+        visitUpdate.medicineStatus = firebase.firestore.FieldValue.delete();
+        visitUpdate.prescription = firebase.firestore.FieldValue.delete();
+      } else {
+        visitUpdate.medicineStatus = "Preparing";
+        visitUpdate.prescription = normalizedMedication;
+      }
+
+      transaction.update(consultationRef, consultationUpdate);
+      transaction.update(visitRef, visitUpdate);
+    });
+  } catch (error) {
+    console.error("[Consultation] Completion transaction failed.", {
+      operation: "complete",
+      consultationPath: `consultations/${consultationId}`,
+      visitPath: `visits/${consultationId}`,
+      doctorId,
+      authenticatedUid: currentUser.uid,
+      errorCode: error?.code || "unknown",
+      errorMessage: error?.message || "Unknown Firestore error",
+    });
+    throw error;
+  }
+}
+
 export async function updateConsultationDetails({
   consultationId,
   doctorId,

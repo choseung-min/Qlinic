@@ -42,7 +42,7 @@
             v-model="form.diagnosis"
             placeholder="Enter diagnosis"
             rows="4"
-            :disabled="isSaving || !isOngoing"
+            :disabled="isSaving || isCompleting || !isOngoing"
           />
 
           <label for="notes">Consultation Notes</label>
@@ -51,7 +51,7 @@
             v-model="form.notes"
             placeholder="Enter consultation notes, observations, etc."
             rows="5"
-            :disabled="isSaving || !isOngoing"
+            :disabled="isSaving || isCompleting || !isOngoing"
           />
 
           <label for="medication">Medication / Prescription</label>
@@ -60,13 +60,13 @@
             v-model="form.medication"
             placeholder="Enter prescribed medication (leave empty if no medication)"
             rows="4"
-            :disabled="isSaving || !isOngoing || form.noMedicationRequired"
+            :disabled="isSaving || isCompleting || !isOngoing || form.noMedicationRequired"
           />
           <label class="checkbox-label">
             <input
               v-model="form.noMedicationRequired"
               type="checkbox"
-              :disabled="isSaving || !isOngoing"
+              :disabled="isSaving || isCompleting || !isOngoing"
               @change="handleMedicationChoice"
             />
             No medication required
@@ -81,17 +81,25 @@
           <p v-if="saveError" class="message error-message" role="alert">
             {{ saveError }}
           </p>
+          <p v-if="completionError" class="message error-message" role="alert">
+            {{ completionError }}
+          </p>
           <div class="action-row">
             <button
               class="save-button"
               type="button"
-              :disabled="isSaving || !isOngoing"
+              :disabled="isSaving || isCompleting || !isOngoing"
               @click="handleSave"
             >
               {{ isSaving ? "Saving..." : "Save" }}
             </button>
-            <button class="complete-button" type="button" disabled>
-              Complete Consultation
+            <button
+              class="complete-button"
+              type="button"
+              :disabled="isSaving || isCompleting || !isOngoing"
+              @click="handleComplete"
+            >
+              {{ isCompleting ? "Completing..." : "Complete Consultation" }}
             </button>
           </div>
         </section>
@@ -114,6 +122,7 @@ import { auth } from "@/services/firebase";
 import { signOutUser } from "@/services/auth";
 import { resolveDoctorForUser } from "@/services/doctorService";
 import {
+  completeConsultation,
   getConsultationDetails,
   updateConsultationDetails,
 } from "@/services/consultationService";
@@ -141,8 +150,10 @@ const consultation = ref({});
 const isLoading = ref(true);
 const errorMessage = ref("");
 const isSaving = ref(false);
+const isCompleting = ref(false);
 const saveMessage = ref("");
 const saveError = ref("");
+const completionError = ref("");
 const form = ref({
   diagnosis: "",
   notes: "",
@@ -228,6 +239,48 @@ async function handleSave() {
         || "Unable to save consultation details. Your changes are still in the form.";
   } finally {
     isSaving.value = false;
+  }
+}
+
+async function handleComplete() {
+  saveMessage.value = "";
+  saveError.value = "";
+  completionError.value = "";
+
+  if (!form.value.diagnosis.trim()) {
+    completionError.value =
+      "Enter a diagnosis before completing the consultation.";
+    return;
+  }
+
+  if (!form.value.noMedicationRequired && !form.value.medication.trim()) {
+    completionError.value =
+      "Enter medication details or select no medication required.";
+    return;
+  }
+
+  if (form.value.noMedicationRequired && form.value.medication.trim()) {
+    completionError.value =
+      "Clear the medication details before selecting no medication required.";
+    return;
+  }
+
+  isCompleting.value = true;
+  try {
+    await completeConsultation({
+      consultationId: consultation.value.id,
+      doctorId: doctor.value.id,
+      ...form.value,
+    });
+    await router.push({ name: "DoctorMain" });
+  } catch (error) {
+    console.error("Unable to complete consultation.", error);
+    completionError.value = error.code === "permission-denied"
+      ? "You do not have permission to complete this consultation."
+      : error.message
+        || "Unable to complete consultation. Your changes are still in the form.";
+  } finally {
+    isCompleting.value = false;
   }
 }
 
