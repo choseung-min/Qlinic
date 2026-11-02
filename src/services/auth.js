@@ -1,31 +1,111 @@
 import { auth, db } from "./firebase";
 
+function logFirestoreFailure(operation, error, details) {
+  console.error(`[DoctorLogin] ${operation} failed.`, {
+    ...details,
+    errorCode: error?.code || "unknown",
+    errorMessage: error?.message || "Unknown Firestore error",
+  });
+}
+
 async function findDoctorRecord(doctorId, uid) {
   for (const collectionName of ["doctors", "doctor"]) {
-    const doctorQuery = await db
-      .collection(collectionName)
-      .where("doctorId", "==", doctorId)
-      .where("uid", "==", uid)
-      .limit(1)
-      .get();
+    const path = `${collectionName}/${doctorId}`;
+    console.info("[DoctorLogin] Reading doctor document.", {
+      operation: "get",
+      path,
+    });
 
-    if (!doctorQuery.empty) {
-      return doctorQuery.docs[0];
+    try {
+      const doctorDocument = await db
+        .collection(collectionName)
+        .doc(doctorId)
+        .get();
+
+      console.info("[DoctorLogin] Doctor document read completed.", {
+        operation: "get",
+        path,
+        exists: doctorDocument.exists,
+      });
+
+      if (
+        doctorDocument.exists &&
+        doctorDocument.data()?.uid === uid &&
+        (!doctorDocument.data()?.doctorId ||
+          doctorDocument.data()?.doctorId === doctorId)
+      ) {
+        return doctorDocument;
+      }
+    } catch (error) {
+      logFirestoreFailure("Read doctor document", error, {
+        operation: "get",
+        path,
+      });
+      throw error;
     }
+  }
 
-    const doctorDocument = await db.collection(collectionName).doc(doctorId).get();
+  for (const collectionName of ["doctors", "doctor"]) {
+    console.info("[DoctorLogin] Querying doctor document by authenticated UID.", {
+      operation: "list",
+      collection: collectionName,
+      filters: ["uid == authenticated-user-uid", "doctorId == entered-doctor-id"],
+    });
 
-    if (
-      doctorDocument.exists &&
-      doctorDocument.data()?.uid === uid &&
-      (!doctorDocument.data()?.doctorId ||
-        doctorDocument.data()?.doctorId === doctorId)
-    ) {
-      return doctorDocument;
+    try {
+      const doctorQuery = await db
+        .collection(collectionName)
+        .where("doctorId", "==", doctorId)
+        .where("uid", "==", uid)
+        .limit(1)
+        .get();
+
+      console.info("[DoctorLogin] Doctor UID query completed.", {
+        operation: "list",
+        collection: collectionName,
+        resultCount: doctorQuery.size,
+      });
+
+      if (!doctorQuery.empty) {
+        return doctorQuery.docs[0];
+      }
+    } catch (error) {
+      logFirestoreFailure("Query doctor document by authenticated UID", error, {
+        operation: "list",
+        collection: collectionName,
+        filters: [
+          "uid == authenticated-user-uid",
+          "doctorId == entered-doctor-id",
+        ],
+      });
+      throw error;
     }
   }
 
   return null;
+}
+
+async function readUserProfile(uid) {
+  console.info("[DoctorLogin] Reading user profile.", {
+    operation: "get",
+    path: `users/${uid}`,
+  });
+
+  try {
+    const userSnapshot = await db.collection("users").doc(uid).get();
+    console.info("[DoctorLogin] User profile read completed.", {
+      operation: "get",
+      path: `users/${uid}`,
+      exists: userSnapshot.exists,
+    });
+    return userSnapshot;
+  } catch (error) {
+    logFirestoreFailure("Read user profile", error, {
+      operation: "get",
+      path: `users/${uid}`,
+    });
+    throw error;
+  }
 }
 
 export async function registerPatient({
@@ -71,8 +151,22 @@ export async function registerPatient({
 }
 
 export async function signInUser({ email, password, staffId }) {
-  const credential = await auth.signInWithEmailAndPassword(email, password);
-  const userSnapshot = await db.collection("users").doc(credential.user.uid).get();
+  console.info("[DoctorLogin] Authentication started.");
+  let credential;
+  try {
+    credential = await auth.signInWithEmailAndPassword(email, password);
+    console.info("[DoctorLogin] Authentication succeeded.", {
+      authenticatedUid: credential.user.uid,
+    });
+  } catch (error) {
+    console.error("[DoctorLogin] Authentication failed.", {
+      errorCode: error?.code || "unknown",
+      errorMessage: error?.message || "Unknown authentication error",
+    });
+    throw error;
+  }
+
+  const userSnapshot = await readUserProfile(credential.user.uid);
 
   if (!userSnapshot.exists) {
     await auth.signOut();
@@ -80,25 +174,46 @@ export async function signInUser({ email, password, staffId }) {
   }
 
   const userData = userSnapshot.data();
+  console.info("[DoctorLogin] Checking account role.", {
+    role: userData.role || null,
+    hasDoctorId: typeof userData.doctorId === "string",
+    hasLegacyDoctorId: typeof userData.doctorID === "string",
+  });
 
   if (userData.role === "doctor") {
-    if (!staffId || !/^D/.test(staffId)) {
+    const enteredDoctorId = staffId?.trim();
+    const mappedDoctorId = userData.doctorId || userData.doctorID;
+
+    if (!enteredDoctorId) {
       await auth.signOut();
-      throw new Error("Please enter a doctor ID starting with D.");
+      throw new Error("Please enter your doctor ID.");
     }
 
-    const doctorDocument = await findDoctorRecord(
-      staffId,
-      credential.user.uid,
-    );
-
     if (
-      !doctorDocument
+      typeof mappedDoctorId !== "string" ||
+      enteredDoctorId !== mappedDoctorId
     ) {
       await auth.signOut();
       throw new Error("The doctor ID could not be verified.");
     }
 
+    console.info("[DoctorLogin] Resolving doctor ID.", {
+      enteredDoctorId,
+      authenticatedUid: credential.user.uid,
+    });
+    const doctorDocument = await findDoctorRecord(
+      enteredDoctorId,
+      credential.user.uid,
+    );
+
+    if (!doctorDocument) {
+      await auth.signOut();
+      throw new Error("The doctor ID could not be verified.");
+    }
+
+    console.info("[DoctorLogin] Doctor profile loaded.", {
+      documentId: doctorDocument.id,
+    });
     return { user: credential.user, role: "doctor" };
   }
 
