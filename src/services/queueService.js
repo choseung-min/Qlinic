@@ -1,8 +1,26 @@
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
+import { getActiveDoctors } from "@/services/doctorService";
 
 const ACTIVE_VISIT_STATUSES = new Set(["Waiting", "Called"]);
+export const queueTimeSlots = [
+  "09:00",
+  "09:30",
+  "10:00",
+  "10:30",
+  "11:00",
+  "12:00",
+  "12:30",
+  "13:00",
+  "13:30",
+  "14:00",
+  "14:30",
+  "15:00",
+  "15:30",
+  "16:00",
+  "16:30",
+];
 
 export function watchActiveWalkInVisit(patientId, onChange, onError) {
   const visitRef = db
@@ -111,6 +129,68 @@ export async function joinWalkInQueue(patientId) {
   } catch (error) {
     throw addQueueOperation(error, error.queueOperation || "queue-transaction");
   }
+}
+
+export async function registerWalkInPatient({
+  patientName,
+  patientId = "",
+  visitDate,
+  appointmentTime,
+  reasonForVisit,
+}) {
+  const trimmedName = patientName?.trim();
+  const trimmedPatientId = patientId?.trim();
+
+  if (!trimmedName || !visitDate || !appointmentTime || !reasonForVisit?.trim()) {
+    throw createQueueError("invalid-walk-in");
+  }
+
+  if (!queueTimeSlots.includes(appointmentTime)) {
+    throw createQueueError("invalid-time-slot");
+  }
+
+  const doctors = await getActiveDoctors();
+  const doctor = doctors[0];
+
+  if (!doctor) {
+    throw createQueueError("no-available-doctor");
+  }
+
+  const visitRef = db.collection("visits").doc();
+  const counterRef = db.collection("queueCounters").doc(visitDate);
+
+  return db.runTransaction(async (transaction) => {
+    const counterSnapshot = await transaction.get(counterRef);
+    const queueNumber = counterSnapshot.exists
+      ? counterSnapshot.data()?.nextQueueNumber || 1
+      : 1;
+
+    transaction.set(counterRef, {
+      visitDate,
+      nextQueueNumber: queueNumber + 1,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    transaction.set(visitRef, {
+      ...(trimmedPatientId ? { patientId: trimmedPatientId } : {}),
+      patientName: trimmedName,
+      doctorId: doctor.id,
+      doctorName: doctor.name || "",
+      visitType: "walk-in",
+      visitDate,
+      appointmentDate: visitDate,
+      appointmentTime,
+      reasonForVisit: reasonForVisit.trim(),
+      queueNumber,
+      queueOrder: queueNumber,
+      visitStatus: "Waiting",
+      status: "waiting",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { id: visitRef.id, queueNumber, doctor };
+  });
 }
 
 export async function leaveWalkInQueue(patientId) {
