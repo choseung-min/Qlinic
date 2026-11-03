@@ -8,6 +8,7 @@ import Login from "@/views/auth/Login.vue";
 import StaffMain from "@/views/staff/Main.vue";
 import PatientOverview from "@/views/staff/PatientOverview.vue";
 import MedicineCollection from "@/views/staff/MedicineCollection.vue";
+import WalkInRegistration from "@/views/staff/WalkInRegistration.vue";
 import DoctorMain from "@/views/doctor/Main.vue";
 import DoctorPatientInformation from "@/views/doctor/PatientInformation.vue";
 import DoctorConsultation from "@/views/doctor/Consultation.vue";
@@ -41,6 +42,12 @@ const routes = [
     path: "/staff/medicine-collection",
     name: "StaffMedicineCollection",
     component: MedicineCollection,
+    meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/staff/walk-in-registration",
+    name: "StaffWalkInRegistration",
+    component: WalkInRegistration,
     meta: { requiresAuth: true, role: "staff" },
   },
   {
