@@ -1,7 +1,7 @@
 <template>
     <section class="medicine-collection">
         <div class="page-header">
-            <h1>Medicine Collection</h1>
+            <h1><span class="heading-icon">℞</span> Medicine Collection</h1>
             <p>Track and update medicine collection status</p>
         </div>
 
@@ -22,7 +22,7 @@
 
                 <div class="medicine-info">
                     <div class="medicine-icon">
-                        💊
+                        ℞
                     </div>
 
                     <div class="patient-details">
@@ -46,19 +46,25 @@
                         <p class="prescription">
                             Rx: {{ visit.prescription || 'Not available' }}
                         </p>
+
+                        <p v-if="actionErrors[visit.id]" class="action-error" role="alert">
+                            {{ actionErrors[visit.id] }}
+                        </p>
                     </div>
                 </div>
 
                 <!-- 7B medicine collection actions -->
                 <div class="medicine-actions">
-                    <button v-if="isPreparing(visit.medicineStatus)" type="button"
-                        class="button-ready" disabled>
-                        Mark Ready
+                    <button v-if="isPreparing(visit.medicineStatus) && visit.visitStatus === 'Awaiting Medicine'"
+                        type="button" class="button-ready" @click="markReady(visit)"
+                        :disabled="updatingVisitId !== null">
+                        {{ updatingVisitId === visit.id ? 'Updating...' : 'Mark Ready' }}
                     </button>
 
-                    <button v-else-if="isReady(visit.medicineStatus)" type="button"
-                        class="button-collected" disabled>
-                        Mark Collected
+                    <button v-else-if="isReady(visit.medicineStatus) && visit.visitStatus === 'Awaiting Medicine'"
+                        type="button" class="button-collected" @click="markCollected(visit)"
+                        :disabled="updatingVisitId !== null">
+                        {{ updatingVisitId === visit.id ? 'Updating...' : 'Mark Collected' }}
                     </button>
 
                     <span v-else-if="isCollected(visit.medicineStatus)" class="collected-label">
@@ -84,7 +90,9 @@ export default {
             errorMessage: '',
             unsubscribeAuth: null,
             unsubscribeVisits: null,
-            loadVersion: 0
+            loadVersion: 0,
+            updatingVisitId: null,
+            actionErrors: {}
         };
     },
 
@@ -212,6 +220,77 @@ export default {
                     this.errorMessage = 'Unable to load medicine collection';
                     this.loading = false;
                 });
+        },
+
+        // 7B mark medicine as ready for collection
+        async markReady(visit) {
+            await this.updateMedicineStatus(visit, 'Ready');
+        },
+
+        // 7B mark medicine as collected and complete the visit
+        async markCollected(visit) {
+            await this.updateMedicineStatus(visit, 'Collected');
+        },
+
+        // 7B update medicine collection status in Firestore
+        async updateMedicineStatus(visit, newStatus) {
+            if (this.updatingVisitId !== null) {
+                return;
+            }
+
+            this.actionErrors[visit.id] = '';
+            this.updatingVisitId = visit.id;
+
+            try {
+                if (!auth.currentUser) {
+                    throw new Error('Please log in to update medicine collection');
+                }
+
+                const visitRef = db.collection('visits').doc(visit.id);
+
+                await db.runTransaction(async (transaction) => {
+                    const visitSnapshot = await transaction.get(visitRef);
+
+                    if (!visitSnapshot.exists) {
+                        throw new Error('This patient visit could not be found');
+                    }
+
+                    const current = visitSnapshot.data();
+
+                    if (current.visitDate !== this.today ||
+                        current.visitStatus !== 'Awaiting Medicine') {
+                        throw new Error('This visit can no longer be updated');
+                    }
+
+                    if (newStatus === 'Ready') {
+                        if (current.medicineStatus !== 'Preparing') {
+                            throw new Error('Medicine is no longer being prepared');
+                        }
+
+                        transaction.update(visitRef, {
+                            medicineStatus: 'Ready'
+                        });
+                    } else if (newStatus === 'Collected') {
+                        if (current.medicineStatus !== 'Ready' &&
+                            current.medicineStatus !== 'Ready for Collection') {
+                            throw new Error('Medicine must be ready before collection');
+                        }
+
+                        transaction.update(visitRef, {
+                            medicineStatus: 'Collected',
+                            visitStatus: 'Completed'
+                        });
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error updating medicine collection:', error);
+                this.actionErrors[visit.id] = error.code === 'permission-denied'
+                    ? 'Unable to update medicine collection due to permissions'
+                    : error.message || 'Unable to update medicine collection';
+            } finally {
+                this.updatingVisitId = null;
+            }
         },
 
         // 7A identify visits with medicine collection records
@@ -372,6 +451,10 @@ export default {
     margin: 0;
 }
 
+.heading-icon {
+    color: #178b87;
+}
+
 .medicine-list {
     display: flex;
     flex-direction: column;
@@ -405,6 +488,7 @@ export default {
     height: 46px;
     border-radius: 10px;
     background: #f7f0ff;
+    color: #8845c0;
     font-size: 22px;
 }
 
@@ -480,6 +564,13 @@ export default {
     overflow-wrap: anywhere;
 }
 
+/* 7B update error message */
+.action-error {
+    color: #b42318;
+    font-size: 12px;
+    margin: 8px 0 0;
+}
+
 .medicine-actions {
     display: flex;
     flex-shrink: 0;
@@ -491,6 +582,10 @@ export default {
     border-radius: 6px;
     font-size: 13px;
     font-weight: 500;
+    cursor: pointer;
+}
+
+.medicine-actions button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
 }
