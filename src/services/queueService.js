@@ -149,8 +149,7 @@ export async function registerWalkInPatient({
     throw createQueueError("invalid-time-slot");
   }
 
-  const doctors = await getActiveDoctors();
-  const doctor = doctors[0];
+  const doctor = await pickDoctorForWalkIn(visitDate);
 
   if (!doctor) {
     throw createQueueError("no-available-doctor");
@@ -324,4 +323,34 @@ async function updateVisitQueueStatus(visitId, { allowedFrom, newStatus, moveToB
     transaction.update(visitRef, updates);
     return { id: visitId, ...visit, ...updates };
   });
+}
+
+const QUEUE_LOAD_STATUSES = new Set(["Waiting", "Called", "Late", "In Consultation"]);
+
+export async function pickDoctorForWalkIn(visitDate) {
+  const doctors = await getActiveDoctors();
+  const availableDoctors = doctors.filter(
+    (doctor) => (doctor.availabilityStatus || "Available") === "Available",
+  );
+
+  if (availableDoctors.length === 0) {
+    return null;
+  }
+
+  const visitsSnapshot = await db
+    .collection("visits")
+    .where("visitDate", "==", visitDate)
+    .get();
+
+  const queueLoad = new Map(availableDoctors.map((doctor) => [doctor.id, 0]));
+  visitsSnapshot.forEach((document) => {
+    const visit = document.data();
+    if (queueLoad.has(visit.doctorId) && QUEUE_LOAD_STATUSES.has(visit.visitStatus)) {
+      queueLoad.set(visit.doctorId, queueLoad.get(visit.doctorId) + 1);
+    }
+  });
+
+  return availableDoctors.reduce((best, doctor) =>
+    queueLoad.get(doctor.id) < queueLoad.get(best.id) ? doctor : best,
+  );
 }
