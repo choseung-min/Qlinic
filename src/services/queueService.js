@@ -23,19 +23,22 @@ export const queueTimeSlots = [
 ];
 
 export function watchActiveWalkInVisit(patientId, onChange, onError) {
-  const visitRef = db
+  return db
     .collection("visits")
-    .doc(`walkin_${patientId}_${getClinicDate()}`);
-
-  return visitRef.onSnapshot(
+    .where("patientId", "==", patientId)
+    .where("visitDate", "==", getClinicDate())
+    .onSnapshot(
     (snapshot) => {
-      if (!snapshot.exists) {
+      const activeVisit = snapshot.docs
+        .map((document) => ({ id: document.id, ...document.data() }))
+        .find((visit) => ACTIVE_VISIT_STATUSES.has(visit.visitStatus));
+
+      if (!activeVisit) {
         onChange(null);
         return;
       }
 
-      const visit = { id: snapshot.id, ...snapshot.data() };
-      onChange(ACTIVE_VISIT_STATUSES.has(visit.visitStatus) ? visit : null);
+      onChange(activeVisit);
     },
     (error) => onError(addQueueOperation(error, "active-visit-read")),
   );
@@ -134,23 +137,28 @@ export async function joinWalkInQueue(patientId) {
 export async function registerWalkInPatient({
   patientName,
   patientId = "",
-  visitDate,
-  appointmentTime,
   reasonForVisit,
 }) {
   const trimmedName = patientName?.trim();
   const trimmedPatientId = patientId?.trim();
+  const visitDate = getClinicDate();
 
-  if (!trimmedName || !visitDate || !appointmentTime || !reasonForVisit?.trim()) {
+  if (!trimmedName || !reasonForVisit?.trim()) {
     throw createQueueError("invalid-walk-in");
   }
 
-  if (!queueTimeSlots.includes(appointmentTime)) {
-    throw createQueueError("invalid-time-slot");
+  const appointmentTime = getNextQueueTimeSlot();
+
+  if (!appointmentTime) {
+    throw createQueueError("no-remaining-time-slots");
   }
 
   const doctors = await getActiveDoctors();
-  const doctor = doctors[0];
+  const doctor = doctors.find(
+    (candidate) =>
+      candidate.availabilityStatus !== "On Break" &&
+      candidate.available !== false,
+  );
 
   if (!doctor) {
     throw createQueueError("no-available-doctor");
@@ -191,6 +199,18 @@ export async function registerWalkInPatient({
 
     return { id: visitRef.id, queueNumber, doctor };
   });
+}
+
+function getNextQueueTimeSlot() {
+  const now = new Date();
+  const currentTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Singapore",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(now);
+
+  return queueTimeSlots.find((slot) => slot > currentTime);
 }
 
 export async function leaveWalkInQueue(patientId) {

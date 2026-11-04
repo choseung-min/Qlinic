@@ -22,6 +22,12 @@
       <router-link v-if="user && role === 'staff'" to="/staff"
         >Staff Main</router-link
       >
+      <router-link v-if="user && role === 'staff'" to="/staff/patient-overview"
+        >Patient Overview</router-link
+      >
+      <router-link v-if="user && role === 'staff'" to="/staff/medicine-collection"
+        >Medicine Collection</router-link
+      >
 
       <router-link v-if="user && role === 'doctor'" to="/doctor"
         >Doctor Main</router-link
