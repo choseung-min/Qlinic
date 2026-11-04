@@ -246,3 +246,82 @@ function addQueueOperation(error, operation) {
   error.queueOperation = operation;
   return error;
 }
+
+export const VISIT_STATUS = {
+  WAITING: "Waiting",
+  CALLED: "Called",
+  LATE: "Late",
+  ABSENT: "Absent",
+};
+
+export function markVisitLate(visitId) {
+  return updateVisitQueueStatus(visitId, {
+    allowedFrom: [VISIT_STATUS.WAITING, VISIT_STATUS.CALLED],
+    newStatus: VISIT_STATUS.LATE,
+    moveToBack: true,
+  });
+}
+
+export function markVisitAbsent(visitId) {
+  return updateVisitQueueStatus(visitId, {
+    allowedFrom: [VISIT_STATUS.WAITING, VISIT_STATUS.CALLED, VISIT_STATUS.LATE],
+    newStatus: VISIT_STATUS.ABSENT,
+    moveToBack: false,
+  });
+}
+
+export function markVisitArrived(visitId, currentStatus) {
+  return updateVisitQueueStatus(visitId, {
+    allowedFrom: [VISIT_STATUS.LATE, VISIT_STATUS.ABSENT],
+    newStatus: VISIT_STATUS.WAITING,
+    moveToBack: currentStatus === VISIT_STATUS.ABSENT,
+  });
+}
+
+async function updateVisitQueueStatus(visitId, { allowedFrom, newStatus, moveToBack }) {
+  if (!visitId) {
+    throw createQueueError("invalid-visit");
+  }
+
+  const visitRef = db.collection("visits").doc(visitId);
+
+  return db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+    if (!visitSnapshot.exists) {
+      throw createQueueError("visit-not-found");
+    }
+
+    const visit = visitSnapshot.data();
+    if (!allowedFrom.includes(visit.visitStatus)) {
+      throw createQueueError("invalid-status-change");
+    }
+
+    const updates = {
+      visitStatus: newStatus,
+      queueOrder: Number(visit.queueOrder ?? visit.queueNumber ?? 0),
+      statusUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (moveToBack) {
+      const counterRef = db.collection("queueCounters").doc(visit.visitDate);
+      const counterSnapshot = await transaction.get(counterRef);
+      const nextPosition = counterSnapshot.exists
+        ? counterSnapshot.data()?.nextQueueNumber || 1
+        : 1;
+
+      transaction.set(
+        counterRef,
+        {
+          visitDate: visit.visitDate,
+          nextQueueNumber: nextPosition + 1,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      updates.queueOrder = nextPosition; 
+    }
+
+    transaction.update(visitRef, updates);
+    return { id: visitId, ...visit, ...updates };
+  });
+}

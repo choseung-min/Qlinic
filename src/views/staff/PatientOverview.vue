@@ -58,6 +58,9 @@
                     Clear Filters
                 </button>
             </div>
+            <p v-if="actionError" class="table-message error-message" role="alert">
+                {{ actionError }}
+            </p>
 
             <p v-if="loading" class="table-message">
                 Loading patients...
@@ -85,6 +88,7 @@
                             <th>DOCTOR</th>
                             <th>STATUS</th>
                             <th>MEDICINE</th>
+                            <th>ACTIONS</th>
                         </tr>
                     </thead>
 
@@ -118,6 +122,24 @@
                                 </span>
                                 <span v-else>—</span>
                             </td>
+                            <td class="actions-cell">
+                                <button v-if="canMarkLate(visit)" type="button" class="action-button"
+                                    :disabled="updatingVisitId === visit.id"
+                                     @click="changeStatus(visit, 'late')">
+                                    Late
+                                </button>
+                                <button v-if="canMarkAbsent(visit)" type="button" class="action-button action-button--muted"
+                                    :disabled="updatingVisitId === visit.id"
+                                    @click="changeStatus(visit, 'absent')">
+                                    Absent
+                                </button>
+                                <button v-if="canMarkArrived(visit)" type="button"
+                                    class="action-button action-button--primary"
+                                    :disabled="updatingVisitId === visit.id"
+                                    @click="changeStatus(visit, 'arrived')">
+                                    Arrived
+                                </button>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -128,6 +150,12 @@
 
 <script>
 import { auth, db } from '@/services/firebase.js';
+import {
+    markVisitLate,
+    markVisitAbsent,
+    markVisitArrived,
+    VISIT_STATUS
+} from '@/services/queueService';
 
 export default {
     name: 'PatientOverview',
@@ -145,7 +173,9 @@ export default {
             errorMessage: '',
             unsubscribeAuth: null,
             unsubscribeVisits: null,
-            loadVersion: 0
+            loadVersion: 0,
+            updatingVisitId: null,
+            actionError: ''
         };
     },
 
@@ -327,6 +357,7 @@ export default {
                             rows.push({
                                 id: document.id,
                                 queueNumber: visit.queueNumber || '',
+                                queueOrder: visit.queueOrder ?? visit.queueNumber,
                                 patientName: patientName || 'Patient name unavailable',
                                 visitType: visit.visitType || '',
                                 doctorName: doctorName,
@@ -336,10 +367,10 @@ export default {
                             });
                         }
 
-                        // display patients according to queue number
+                        // display patients in actual queue order (falls back to queue number)
                         rows.sort((a, b) => {
-                            return this.queueValue(a.queueNumber) -
-                                this.queueValue(b.queueNumber);
+                            return this.queueValue(a.queueOrder) -
+                            this.queueValue(b.queueOrder);
                         });
 
                         if (version === this.loadVersion && auth.currentUser) {
@@ -373,6 +404,47 @@ export default {
             }
         },
 
+        // 4A which actions are allowed for each status
+        canMarkLate(visit) {
+            return [VISIT_STATUS.WAITING, VISIT_STATUS.CALLED].includes(visit.visitStatus);
+        },
+
+        canMarkAbsent(visit) {
+            return [VISIT_STATUS.WAITING, VISIT_STATUS.CALLED, VISIT_STATUS.LATE].includes(visit.visitStatus);
+        },
+
+        canMarkArrived(visit) {
+            return [VISIT_STATUS.LATE, VISIT_STATUS.ABSENT].includes(visit.visitStatus);
+        },
+
+        // 4A–4C update status and queue position
+        async changeStatus(visit, action) {
+            this.actionError = '';
+            this.updatingVisitId = visit.id;
+
+        try {
+            if (action === 'late') {
+                await markVisitLate(visit.id);
+            } else if (action === 'absent') {
+                await markVisitAbsent(visit.id);
+            } else if (action === 'arrived') {
+                await markVisitArrived(visit.id, visit.visitStatus);
+            }
+        // no manual refresh needed: onSnapshot updates the table
+        } catch (error) {
+            console.error('Unable to update visit status:', error);
+
+            this.actionError =
+                error.code === 'permission-denied'
+                    ? 'You do not have permission to update this patient.'
+                    : error.code === 'invalid-status-change'
+                        ? "This patient's status changed. Please try again."
+                        : 'Unable to update patient status. Please try again.';
+        } finally {
+            this.updatingVisitId = null;
+        }
+    },
+
         queueValue(value) {
             return parseInt(
                 String(value).replace(/\D/g, ''),
@@ -397,7 +469,7 @@ export default {
                 return 'status-waiting';
             }
 
-            if (value === 'in consultation') {
+            if (value === 'in consultation' || value === 'called') {
                 return 'status-consultation';
             }
 
@@ -407,6 +479,10 @@ export default {
 
             if (value === 'completed') {
                 return 'status-completed';
+            }
+
+            if (value === 'late') {
+                return 'status-late';
             }
 
             if (value === 'absent' || value === 'cancelled') {
@@ -560,7 +636,7 @@ export default {
 .patient-table {
     border-collapse: collapse;
     width: 100%;
-    min-width: 700px;
+    min-width: 820px;
     text-align: left;
 }
 
@@ -607,7 +683,8 @@ export default {
     color: #3a62a0;
 }
 
-.status-medicine {
+.status-medicine,
+.status-late {
     background: #fff4d8;
     color: #906400;
 }
@@ -615,6 +692,40 @@ export default {
 .status-absent,
 .status-other {
     background: #edf0f4;
+    color: #637083;
+}
+
+.actions-cell {
+    white-space: nowrap;
+}
+
+.action-button {
+    border: 1px solid #e8edf2;
+    border-radius: 5px;
+    background: white;
+    color: #172b46;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 6px;
+    padding: 5px 10px;
+}
+
+.action-button:hover:not(:disabled) {
+    border-color: #178b87;
+}
+
+.action-button:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.action-button--primary {
+    background: #178b87;
+    border-color: #178b87;
+    color: white;
+}
+
+.action-button--muted {
     color: #637083;
 }
 
