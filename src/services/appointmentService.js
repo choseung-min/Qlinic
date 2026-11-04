@@ -164,6 +164,43 @@ export async function rescheduleAppointment({
   const appointments = db.collection('appointments');
   const oldRef = appointments.doc(appointmentId);
 
+  const oldSnapshot = await oldRef.get();
+
+  if (!oldSnapshot.exists) {
+    throw createAppointmentError('appointment-not-found');
+  }
+
+  const current = oldSnapshot.data();
+
+  if (current.patientId !== patientId) {
+    throw createAppointmentError('unauthenticated');
+  }
+
+  if (current.status !== 'booked' ||
+    !isFutureDate(current.appointmentDate)) {
+    throw createAppointmentError('cannot-reschedule');
+  }
+
+  if (current.appointmentDate === appointmentDate &&
+    current.appointmentTime === appointmentTime) {
+    throw createAppointmentError('no-changes');
+  }
+
+  if (!current.doctorId) {
+    throw createAppointmentError('invalid-doctor');
+  }
+
+  const conflictingSnapshot = await appointments
+    .where('doctorId', '==', current.doctorId)
+    .where('appointmentDate', '==', appointmentDate)
+    .where('appointmentTime', '==', appointmentTime)
+    .where('status', '==', 'booked')
+    .get();
+
+  if (conflictingSnapshot.docs.some((document) => document.id !== appointmentId)) {
+    throw createAppointmentError('slot-taken');
+  }
+
   return db.runTransaction(async (transaction) => {
     const oldSnapshot = await transaction.get(oldRef);
 
@@ -171,33 +208,8 @@ export async function rescheduleAppointment({
       throw createAppointmentError('appointment-not-found');
     }
 
-    const current = oldSnapshot.data();
-
-    if (current.patientId !== patientId) {
-      throw createAppointmentError('unauthenticated');
-    }
-
-    if (current.status !== 'booked' ||
-      !isFutureDate(current.appointmentDate)) {
-      throw createAppointmentError('cannot-reschedule');
-    }
-
-    if (current.appointmentDate === appointmentDate &&
-      current.appointmentTime === appointmentTime) {
-      throw createAppointmentError('no-changes');
-    }
-
-    if (!current.doctorId) {
-      throw createAppointmentError('invalid-doctor');
-    }
-
-    // generate a new appointment ID following the booking service
-    const newId = `${current.doctorId}_${appointmentDate}_${appointmentTime.replace(':', '-')}`;
-
-    const newRef = appointments.doc(newId);
     const doctorRef = db.collection('doctors').doc(current.doctorId);
 
-    const newSnapshot = await transaction.get(newRef);
     const doctorSnapshot = await transaction.get(doctorRef);
 
     if (!doctorSnapshot.exists ||
@@ -205,22 +217,13 @@ export async function rescheduleAppointment({
       throw createAppointmentError('invalid-doctor');
     }
 
-    if (newSnapshot.exists) {
-      throw createAppointmentError('slot-taken');
-    }
-
-    // save the appointment under the new slot ID
-    transaction.set(newRef, {
-      ...current,
+    transaction.update(oldRef, {
       appointmentDate,
       appointmentTime,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
-    // release the old appointment slot
-    transaction.delete(oldRef);
-
-    return newId;
+    return appointmentId;
   });
 }
 
@@ -256,19 +259,11 @@ export async function cancelAppointment({ appointmentId, patientId }) {
       throw createAppointmentError('cannot-cancel');
     }
 
-    // archived records use a different ID so the original slot becomes available
-    const archiveId = `cancelled_${appointmentId}_${appointments.doc().id}`;
-    const archiveRef = appointments.doc(archiveId);
-
-    transaction.set(archiveRef, {
-      ...current,
+    transaction.update(oldRef, {
       status: 'cancelled',
-      originalAppointmentId: appointmentId,
-      cancelledAt: firebase.firestore.FieldValue.serverTimestamp()
+      cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
-    transaction.delete(oldRef);
-
-    return archiveRef.id;
+    return appointmentId;
   });
 }

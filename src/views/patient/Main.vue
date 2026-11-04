@@ -34,7 +34,7 @@
         </div>
         <div class="queue-stats">
           <div class="queue-number">
-            <strong>Q{{ formatQueueNumber(currentVisit.queueNumber) }}</strong>
+            <strong>{{ formatQueueLabel(currentVisit.queueNumber) }}</strong>
             <span>Queue No.</span>
           </div>
           <div>
@@ -287,6 +287,13 @@ function formatAppointmentTime(timeValue) {
 
 function formatQueueNumber(queueNumber) {
   return String(queueNumber).padStart(2, "0");
+}
+
+function formatQueueLabel(queueNumber) {
+  const value = String(queueNumber);
+  return value.startsWith("A")
+    ? `A${formatQueueNumber(value.slice(1))}`
+    : `Q${formatQueueNumber(value)}`;
 }
 
 function openAppointment(appointmentId) {

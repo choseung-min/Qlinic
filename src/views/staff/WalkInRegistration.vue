@@ -2,7 +2,7 @@
   <main class="page">
     <header class="page-header">
       <h1>Register walk-in patient</h1>
-      <p>Add a patient to the clinic queue.</p>
+      <p>Add a patient to the queue immediately. They will wait at the clinic until called.</p>
     </header>
 
     <section class="card registration-card">
@@ -23,17 +23,6 @@
           A patient ID links this visit to the patient's account. A name is enough
           for patients without one.
         </p>
-
-        <label for="visit-date">Date</label>
-        <input id="visit-date" v-model="visitDate" :min="minimumDate" required type="date" />
-
-        <label for="time-slot">Time slot</label>
-        <select id="time-slot" v-model="appointmentTime" required>
-          <option disabled value="">Select a time slot</option>
-          <option v-for="slot in queueTimeSlots" :key="slot" :value="slot">
-            {{ slot }}
-          </option>
-        </select>
 
         <label for="reason">Reason for visit</label>
         <textarea
@@ -61,17 +50,16 @@
 
 <script setup>
 import { ref } from "vue";
-import { queueTimeSlots, registerWalkInPatient } from "@/services/queueService";
+import { useRouter } from "vue-router";
+import { registerWalkInPatient } from "@/services/queueService";
 
+const router = useRouter();
 const patientName = ref("");
 const patientId = ref("");
-const visitDate = ref(getLocalDate());
-const appointmentTime = ref("");
 const reasonForVisit = ref("");
 const isSubmitting = ref(false);
 const successMessage = ref("");
 const errorMessage = ref("");
-const minimumDate = getLocalDate();
 
 async function handleSubmit() {
   successMessage.value = "";
@@ -82,20 +70,17 @@ async function handleSubmit() {
     const result = await registerWalkInPatient({
       patientName: patientName.value,
       patientId: patientId.value,
-      visitDate: visitDate.value,
-      appointmentTime: appointmentTime.value,
       reasonForVisit: reasonForVisit.value,
     });
 
     successMessage.value = `Patient registered. Queue number: Q${result.queueNumber}.`;
-    patientName.value = "";
-    patientId.value = "";
-    appointmentTime.value = "";
-    reasonForVisit.value = "";
+    await router.push({ name: "StaffMain" });
   } catch (error) {
     errorMessage.value =
       error.code === "no-available-doctor"
         ? "No active doctor is available right now."
+        : error.code === "no-remaining-time-slots"
+          ? "Walk-in registration is closed because there are no remaining clinic slots today."
         : error.code === "permission-denied"
           ? "You do not have permission to register a walk-in patient."
           : "Unable to register the walk-in patient. Please try again.";
@@ -104,13 +89,6 @@ async function handleSubmit() {
   }
 }
 
-function getLocalDate() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 </script>
 
 <style scoped>
