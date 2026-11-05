@@ -55,6 +55,36 @@ export async function updateStaffVisitStatus(visitId, currentStatus, action) {
     });
 }
 
+// staff (re)allocate a patient to a doctor while they are still waiting
+const ASSIGNABLE_STATUSES = ["Waiting", "Called", "Late"];
+
+export async function assignVisitDoctor(visitId, doctor) {
+  if (!visitId || !doctor?.id) {
+    throw new Error("Choose a doctor to assign.");
+  }
+
+  const visitRef = db.collection("visits").doc(visitId);
+
+  await db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+
+    if (!visitSnapshot.exists) {
+      throw new Error("This patient is no longer in the queue.");
+    }
+
+    if (!ASSIGNABLE_STATUSES.includes(visitSnapshot.data().visitStatus)) {
+      throw new Error("Doctors can only be changed before consultation starts.");
+    }
+
+    transaction.update(visitRef, {
+      doctorId: doctor.id,
+      doctorName: doctor.name || "",
+      reassignedFromDoctorId: visitSnapshot.data().doctorId || "",
+      reassignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+}
+
 export async function deleteStaffVisit(visitId) {
   if (!visitId) {
     throw new Error("A visit ID is required.");
