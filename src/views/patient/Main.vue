@@ -380,6 +380,8 @@ async function handleJoinQueue() {
     queueError.value =
       error.code === "duplicate-booking"
         ? "You are already in today's walk-in queue."
+        : error.code === "already-in-queue"
+          ? "You are already in today's queue (for example, a checked-in appointment)."
         : error.code === "permission-denied"
           ? `You do not have permission to join the queue (${error.queueOperation || "unknown operation"}).`
           : `Unable to join the queue (${error.queueOperation || "unknown operation"}: ${error.code || "unknown error"}).`;

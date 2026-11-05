@@ -130,6 +130,8 @@ async function handleSubmit() {
           ? "That doctor just became unavailable. Please choose another doctor."
         : error.code === "no-remaining-time-slots"
           ? "Walk-in registration is closed because there are no remaining clinic slots today."
+        : error.code === "already-in-queue"
+          ? "This patient is already in today's queue."
         : error.code === "permission-denied"
           ? "You do not have permission to register a walk-in patient."
           : "Unable to register the walk-in patient. Please try again.";

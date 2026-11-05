@@ -1,6 +1,7 @@
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
+import { findVisitInProgress } from "@/services/queueService";
 
 const TRANSITIONS = {
   call: {
@@ -76,6 +77,25 @@ export async function reassignVisit(visitId, fromDoctorId, doctor) {
       attentionReason: "Doctor on break and no other doctor is available.",
     });
     return "flagged";
+  });
+}
+
+// 6C: the patient's own doctor is back on duty, so the flag is no longer needed
+export async function clearDoctorAttention(visitId, doctorId) {
+  const visitRef = db.collection("visits").doc(visitId);
+
+  return db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+    if (!visitSnapshot.exists) return false;
+
+    const visit = visitSnapshot.data();
+    if (!visit.needsAttention || visit.doctorId !== doctorId) return false;
+
+    transaction.update(visitRef, {
+      needsAttention: false,
+      attentionReason: "",
+    });
+    return true;
   });
 }
 
@@ -269,6 +289,18 @@ export async function checkInAppointment(appointmentId) {
   const appointmentQueueRef = db
     .collection("appointmentQueueCounters")
     .doc(getClinicDate());
+
+  // 6D: the patient may already be in the walk-in queue
+  const appointmentSnapshot = await appointmentRef.get();
+  const existingVisit = await findVisitInProgress(
+    appointmentSnapshot.data()?.patientId,
+    getClinicDate(),
+  );
+  if (existingVisit && existingVisit.id !== visitRef.id) {
+    throw new Error(
+      "This patient is already in the walk-in queue. Remove them from it before checking in their appointment.",
+    );
+  }
 
   return db.runTransaction(async (transaction) => {
     const [appointmentSnapshot, visitSnapshot, counterSnapshot] =

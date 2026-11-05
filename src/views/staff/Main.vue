@@ -66,12 +66,12 @@
     </section>
 
     <section
-      v-if="patientsNeedingDoctor.length"
+      v-if="patientsNeedingDoctor.length || flaggedVisits.length"
       class="reassign-banner"
       role="status"
     >
       <div>
-        <strong>
+        <strong v-if="patientsNeedingDoctor.length">
           {{ patientsNeedingDoctor.length }}
           {{ patientsNeedingDoctor.length === 1 ? "patient needs" : "patients need" }}
           a doctor
@@ -85,13 +85,20 @@
             can see they are waiting on a doctor.
           </template>
           <template v-else>
-            They will be moved to the available doctors with the shortest queues.
+            Walk-ins move to the available doctor with the shortest queue.
+            Appointment patients are flagged for you to handle.
           </template>
         </p>
         <p v-if="reassignMessage" class="reassign-result">{{ reassignMessage }}</p>
+        <p v-if="flaggedVisits.length">
+          {{ flaggedVisits.length }} flagged
+          {{ flaggedVisits.length === 1 ? "patient is" : "patients are" }}
+          waiting for their doctor. Open a card to assign another doctor.
+        </p>
       </div>
       <button
         type="button"
+        v-if="patientsNeedingDoctor.length"
         :disabled="reassigning"
         @click="reassignPatients"
       >
@@ -99,7 +106,7 @@
           reassigning
             ? "Updating..."
             : availableDoctorCount
-              ? "Reassign patients"
+              ? "Reassign / flag patients"
               : "Flag patients"
         }}
       </button>
@@ -205,8 +212,11 @@
             >
               {{ visit.visitStatus }}
             </span>
-            <small v-if="needsDoctor(visit)" class="attention-tag">
-              {{ visit.doctorId ? "Doctor on break" : "No doctor" }}
+            <small v-if="doctorTag(visit)" class="attention-tag">
+              {{ doctorTag(visit) }}
+            </small>
+            <small v-if="duplicatePatientIds.has(visit.patientId)" class="attention-tag">
+              In queue twice
             </small>
             <small v-if="visit.appointmentTime">{{
               visit.appointmentTime
@@ -472,11 +482,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { auth, db } from "@/services/firebase";
 import {
   assignVisitDoctor,
   callVisit,
+  clearDoctorAttention,
   reassignVisit,
   changeQueueStatus,
   checkInAppointment,
@@ -566,16 +577,89 @@ const availableDoctorCount = computed(
     ).length,
 );
 
-const patientsNeedingDoctor = computed(() =>
-  visits.value.filter(needsDoctor).sort(compareQueueOrder),
-);
+const ACTIVE_QUEUE_STATUSES = ["Waiting", "Called", "Late"];
 
 function needsDoctor(visit) {
   return (
-    ["Waiting", "Called", "Late"].includes(visit.visitStatus) &&
+    ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus) &&
     (!visit.doctorId || onBreakDoctorIds.value.has(visit.doctorId))
   );
 }
+
+// patients the banner button still has to act on. Flagged appointment
+// patients are already handled (6B); flagged walk-ins come back once a
+// doctor is available again (6C).
+const patientsNeedingDoctor = computed(() =>
+  visits.value
+    .filter(
+      (visit) =>
+        needsDoctor(visit) &&
+        !(
+          visit.needsAttention &&
+          (isPriorityVisit(visit) || !availableDoctorCount.value)
+        ),
+    )
+    .sort(compareQueueOrder),
+);
+
+const flaggedVisits = computed(() =>
+  visits.value.filter(
+    (visit) =>
+      visit.needsAttention && ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus),
+  ),
+);
+
+function doctorTag(visit) {
+  if (visit.needsAttention && needsDoctor(visit)) return "Flagged: doctor on break";
+  if (!needsDoctor(visit)) return "";
+  return visit.doctorId ? "Doctor on break" : "No doctor";
+}
+
+// 6D: the same patient in progress twice today (e.g. appointment + walk-in)
+const duplicatePatientIds = computed(() => {
+  const seen = new Set();
+  const duplicates = new Set();
+  visits.value
+    .filter((visit) =>
+      [...ACTIVE_QUEUE_STATUSES, "Absent", "In Consultation"].includes(
+        visit.visitStatus,
+      ),
+    )
+    .forEach((visit) => {
+      if (!visit.patientId) return;
+      if (seen.has(visit.patientId)) duplicates.add(visit.patientId);
+      seen.add(visit.patientId);
+    });
+  return duplicates;
+});
+
+// 6C: when a flagged patient's own doctor is back on duty, clear the flag
+const clearingFlags = new Set();
+const staleFlags = computed(() =>
+  flaggedVisits.value.filter(
+    (visit) =>
+      visit.doctorId &&
+      doctors.value.some(
+        (doctor) =>
+          doctor.id === visit.doctorId &&
+          (doctor.availabilityStatus || "Available") === "Available",
+      ),
+  ),
+);
+
+watch(staleFlags, (stale) => {
+  stale.forEach(async (visit) => {
+    if (clearingFlags.has(visit.id)) return;
+    clearingFlags.add(visit.id);
+    try {
+      await clearDoctorAttention(visit.id, visit.doctorId);
+    } catch (error) {
+      console.error("Unable to clear the doctor flag.", error);
+    } finally {
+      clearingFlags.delete(visit.id);
+    }
+  });
+});
 
 onMounted(() => {
   stopAuth = auth.onAuthStateChanged((user) => {
@@ -829,7 +913,11 @@ async function reassignPatients() {
     const counts = { reassigned: 0, flagged: 0, skipped: 0 };
 
     for (const visit of patientsNeedingDoctor.value) {
-      const doctor = pickShortestQueueDoctor(available);
+      // 6B: appointment patients keep their booked doctor and get flagged
+      const doctor =
+        isPriorityVisit(visit) && visit.doctorId
+          ? null
+          : pickShortestQueueDoctor(available);
       const result = await reassignVisit(visit.id, visit.doctorId || "", doctor);
       counts[result]++;
 
@@ -840,9 +928,9 @@ async function reassignPatients() {
     }
 
     reassignMessage.value =
-      `Moved ${counts.reassigned} patient(s)` +
+      `Moved ${counts.reassigned} walk-in(s)` +
       (counts.flagged ? `, flagged ${counts.flagged}` : "") +
-      (counts.skipped ? `, ${counts.skipped} already handled` : "") +
+      (counts.skipped ? `, ${counts.skipped} left unchanged` : "") +
       ".";
   } catch (error) {
     console.error("Unable to reassign patients.", error);
