@@ -35,6 +35,70 @@ const TRANSITIONS = {
   },
 };
 
+// Story 2: call a patient safely. Re-checks the saved status (so two
+// receptionists can't call the same patient) and keeps one called
+// patient per doctor per day in doctorQueueState.
+export async function callVisit(visitId) {
+  if (!visitId) {
+    throw new Error("There is no patient to call.");
+  }
+
+  const visitRef = db.collection("visits").doc(visitId);
+
+  await db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+
+    if (!visitSnapshot.exists) {
+      throw new Error("This patient is no longer in the queue.");
+    }
+
+    const visit = visitSnapshot.data();
+
+    if (visit.visitStatus !== "Waiting") {
+      throw new Error(
+        "This patient was already called or moved by someone else.",
+      );
+    }
+
+    if (!visit.doctorId) {
+      throw new Error("Assign a doctor to this patient before calling them.");
+    }
+
+    const stateRef = db
+      .collection("doctorQueueState")
+      .doc(`${visit.visitDate}_${visit.doctorId}`);
+    const stateSnapshot = await transaction.get(stateRef);
+    const calledVisitId = stateSnapshot.exists
+      ? stateSnapshot.data().calledVisitId
+      : null;
+
+    // the doctor's last called patient only blocks if they are still "Called"
+    if (calledVisitId && calledVisitId !== visitId) {
+      const calledSnapshot = await transaction.get(
+        db.collection("visits").doc(calledVisitId),
+      );
+
+      if (
+        calledSnapshot.exists &&
+        calledSnapshot.data().visitStatus === "Called"
+      ) {
+        throw new Error(
+          `${visit.doctorName || "This doctor"} already has a called patient. ` +
+            "Move them to consultation or mark them late first.",
+        );
+      }
+    }
+
+    transaction.set(stateRef, {
+      doctorId: visit.doctorId,
+      visitDate: visit.visitDate,
+      calledVisitId: visitId,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.update(visitRef, { visitStatus: "Called" });
+  });
+}
+
 // Story 4: late / absent / arrived. moveToBack puts the patient behind
 // everyone currently in their queue (backOfQueueOrder comes from the page).
 const QUEUE_STATUS_ACTIONS = {
