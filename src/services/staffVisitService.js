@@ -35,6 +35,50 @@ const TRANSITIONS = {
   },
 };
 
+// Story 6: move a patient off a doctor who went on break (or who has no
+// doctor) to `doctor`. With no doctor available, flag the visit instead.
+// Returns "reassigned", "flagged" or "skipped" (someone already handled it).
+export async function reassignVisit(visitId, fromDoctorId, doctor) {
+  const visitRef = db.collection("visits").doc(visitId);
+
+  return db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+    if (!visitSnapshot.exists) return "skipped";
+
+    const visit = visitSnapshot.data();
+    const stillOnSameDoctor = (visit.doctorId || "") === (fromDoctorId || "");
+
+    if (!stillOnSameDoctor || !ASSIGNABLE_STATUSES.includes(visit.visitStatus)) {
+      return "skipped";
+    }
+
+    if (doctor) {
+      transaction.update(visitRef, {
+        doctorId: doctor.id,
+        doctorName: doctor.name || "",
+        reassignedFromDoctorId: fromDoctorId || "",
+        reassignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        needsAttention: false,
+        attentionReason: "",
+        // a called patient goes back to waiting for their new doctor
+        ...(visit.visitStatus === "Called" ? { visitStatus: "Waiting" } : {}),
+      });
+      return "reassigned";
+    }
+
+    // nobody to move them to: flag for staff (rules need a real doctorId here)
+    if (!fromDoctorId || visit.needsAttention) {
+      return "skipped";
+    }
+
+    transaction.update(visitRef, {
+      needsAttention: true,
+      attentionReason: "Doctor on break and no other doctor is available.",
+    });
+    return "flagged";
+  });
+}
+
 // Story 2: call a patient safely. Re-checks the saved status (so two
 // receptionists can't call the same patient) and keeps one called
 // patient per doctor per day in doctorQueueState.
@@ -201,6 +245,8 @@ export async function assignVisitDoctor(visitId, doctor) {
       doctorName: doctor.name || "",
       reassignedFromDoctorId: visitSnapshot.data().doctorId || "",
       reassignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      needsAttention: false,
+      attentionReason: "",
     });
   });
 }
