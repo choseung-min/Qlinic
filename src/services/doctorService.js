@@ -251,7 +251,8 @@ export function watchDoctorQueue({ doctorId, visitDate, onChange, onError }) {
           .filter(
             (visit) =>
               visit.visitStatus !== "Completed"
-              && visit.visitStatus !== "Awaiting Medicine",
+              && visit.visitStatus !== "Awaiting Medicine"
+              && visit.visitStatus !== "Absent",
           )
           .sort(compareQueueOrder);
         console.info("[DoctorDashboard] Visits after status filtering.", {
