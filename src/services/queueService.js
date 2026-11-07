@@ -73,6 +73,11 @@ export async function joinWalkInQueue(patientId) {
     .doc(`walkin_${patientId}_${visitDate}`);
   const counterRef = db.collection("queueCounters").doc(visitDate);
 
+  // assign a doctor up front; if every doctor is on break, staff allocate one later
+  const doctor = pickShortestQueueDoctor(
+    await getAvailableDoctorsWithLoad(visitDate),
+  );
+
   try {
     return await db.runTransaction(async (transaction) => {
       let existingVisit;
@@ -117,6 +122,8 @@ export async function joinWalkInQueue(patientId) {
         visitStatus: "Waiting",
         queueNumber,
         queueOrder: queueNumber,
+        doctorId: doctor?.id || "",
+        doctorName: doctor?.name || "",
         joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
         visitDate,
       };
@@ -138,6 +145,7 @@ export async function registerWalkInPatient({
   patientName,
   patientId = "",
   reasonForVisit,
+  doctorId = "",
 }) {
   const trimmedName = patientName?.trim();
   const trimmedPatientId = patientId?.trim();
@@ -153,15 +161,14 @@ export async function registerWalkInPatient({
     throw createQueueError("no-remaining-time-slots");
   }
 
-  const doctors = await getActiveDoctors();
-  const doctor = doctors.find(
-    (candidate) =>
-      candidate.availabilityStatus !== "On Break" &&
-      candidate.available !== false,
-  );
+  // staff can pick a doctor; otherwise assign the available doctor with the shortest queue
+  const availableDoctors = await getAvailableDoctorsWithLoad(visitDate);
+  const doctor = doctorId
+    ? availableDoctors.find((candidate) => candidate.id === doctorId)
+    : pickShortestQueueDoctor(availableDoctors);
 
   if (!doctor) {
-    throw createQueueError("no-available-doctor");
+    throw createQueueError(doctorId ? "doctor-unavailable" : "no-available-doctor");
   }
 
   const visitRef = db.collection("visits").doc();
@@ -265,4 +272,60 @@ function createQueueError(code) {
 function addQueueOperation(error, operation) {
   error.queueOperation = operation;
   return error;
+}
+
+// statuses that count towards a doctor's current queue
+const QUEUE_LOAD_STATUSES = new Set([
+  "Waiting",
+  "Called",
+  "Late",
+  "In Consultation",
+]);
+
+export function isDoctorAvailable(doctor) {
+  return (
+    (doctor.availabilityStatus || "Available") === "Available" &&
+    doctor.available !== false
+  );
+}
+
+// available doctors, each with queueLength = patients currently assigned today
+export async function getAvailableDoctorsWithLoad(visitDate = getClinicDate()) {
+  const doctors = (await getActiveDoctors()).filter(isDoctorAvailable);
+
+  if (doctors.length === 0) {
+    return [];
+  }
+
+  const visitsSnapshot = await db
+    .collection("visits")
+    .where("visitDate", "==", visitDate)
+    .get();
+
+  const queueLoad = new Map(doctors.map((doctor) => [doctor.id, 0]));
+  visitsSnapshot.forEach((document) => {
+    const visit = document.data();
+    if (
+      queueLoad.has(visit.doctorId) &&
+      QUEUE_LOAD_STATUSES.has(visit.visitStatus)
+    ) {
+      queueLoad.set(visit.doctorId, queueLoad.get(visit.doctorId) + 1);
+    }
+  });
+
+  return doctors.map((doctor) => ({
+    ...doctor,
+    queueLength: queueLoad.get(doctor.id),
+  }));
+}
+
+// shortest queue wins; ties go to the first doctor alphabetically
+export function pickShortestQueueDoctor(doctorsWithLoad) {
+  if (!doctorsWithLoad?.length) {
+    return null;
+  }
+
+  return doctorsWithLoad.reduce((best, doctor) =>
+    doctor.queueLength < best.queueLength ? doctor : best,
+  );
 }

@@ -308,6 +308,46 @@
             <p v-if="actionError" class="error-message" role="alert">
               {{ actionError }}
             </p>
+            <div
+              v-if="['Waiting', 'Called', 'Late'].includes(selectedVisit.visitStatus)"
+              class="assign-doctor"
+            >
+              <label for="assign-doctor-select">
+                {{ selectedVisit.doctorId ? "Change doctor" : "Assign doctor" }}
+              </label>
+              <p v-if="!selectedVisit.doctorId" class="unassigned-warning">
+                This patient has no doctor yet.
+              </p>
+              <div class="assign-doctor-row">
+                <select
+                  id="assign-doctor-select"
+                  v-model="assignDoctorId"
+                  :disabled="assignDoctorsLoading || assigningDoctor"
+                >
+                  <option value="" disabled>
+                    {{ assignDoctorsLoading ? "Loading doctors..." : "Choose a doctor" }}
+                  </option>
+                  <option
+                    v-for="doctor in assignableDoctors"
+                    :key="doctor.id"
+                    :value="doctor.id"
+                  >
+                    {{ doctor.name }} · {{ doctor.queueLength }} in queue
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  :disabled="
+                    !assignDoctorId ||
+                    assignDoctorId === selectedVisit.doctorId ||
+                    assigningDoctor
+                  "
+                  @click="assignDoctor"
+                >
+                  {{ assigningDoctor ? "Saving..." : "Save" }}
+                </button>
+              </div>
+            </div>
             <div class="action-list">
               <button
                 v-if="
@@ -374,10 +414,15 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth, db } from "@/services/firebase";
 import {
+  assignVisitDoctor,
   checkInAppointment,
   deleteStaffVisit,
   updateStaffVisitStatus,
 } from "@/services/staffVisitService";
+import {
+  getAvailableDoctorsWithLoad,
+  pickShortestQueueDoctor,
+} from "@/services/queueService";
 
 const today = ref(getLocalDate());
 const appointments = ref([]);
@@ -390,6 +435,10 @@ const actionError = ref("");
 const checkedInAppointmentIds = ref(new Set());
 const checkingInAppointmentId = ref("");
 const callingQueue = ref("");
+const assignableDoctors = ref([]);
+const assignDoctorsLoading = ref(false);
+const assignDoctorId = ref("");
+const assigningDoctor = ref(false);
 let stopAppointments;
 let stopVisits;
 let stopAuth;
@@ -459,6 +508,54 @@ function stopListeners() {
 function openVisitActions(visit) {
   selectedVisit.value = visit;
   actionError.value = "";
+  assignDoctorId.value = visit.doctorId || "";
+
+  if (["Waiting", "Called", "Late"].includes(visit.visitStatus)) {
+    loadAssignableDoctors(visit);
+  }
+}
+
+async function loadAssignableDoctors(visit) {
+  assignDoctorsLoading.value = true;
+  try {
+    assignableDoctors.value = await getAvailableDoctorsWithLoad(today.value);
+    // pre-select the shortest queue for patients with no doctor yet
+    if (!visit.doctorId) {
+      assignDoctorId.value =
+        pickShortestQueueDoctor(assignableDoctors.value)?.id || "";
+    }
+    if (assignableDoctors.value.length === 0) {
+      actionError.value = "No doctors are available right now.";
+    }
+  } catch (error) {
+    console.error("Unable to load available doctors.", error);
+    actionError.value = "Unable to load available doctors.";
+  } finally {
+    assignDoctorsLoading.value = false;
+  }
+}
+
+async function assignDoctor() {
+  const visit = selectedVisit.value;
+  const doctor = assignableDoctors.value.find(
+    (candidate) => candidate.id === assignDoctorId.value,
+  );
+  if (!visit || !doctor) return;
+
+  assigningDoctor.value = true;
+  actionError.value = "";
+  try {
+    await assignVisitDoctor(visit.id, doctor);
+    closeVisitActions();
+  } catch (error) {
+    console.error("Unable to assign doctor.", error);
+    actionError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to assign doctors."
+        : error.message || "Unable to assign a doctor.";
+  } finally {
+    assigningDoctor.value = false;
+  }
 }
 
 function closeVisitActions() {
@@ -985,6 +1082,39 @@ function getLocalDate() {
   color: var(--color-text-muted);
   font-size: 13px;
 }
+.assign-doctor {
+  border-bottom: 1px solid var(--color-border, #e8edf2);
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.assign-doctor label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assign-doctor-row {
+  display: flex;
+  gap: 8px;
+}
+
+.assign-doctor-row select {
+  border: 1px solid var(--color-border, #e8edf2);
+  border-radius: 7px;
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.unassigned-warning {
+  color: #906400;
+  font-size: 12px;
+  margin: 0;
+}
+
 .error-message {
   color: #b42318;
   font-size: 13px;
