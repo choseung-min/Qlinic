@@ -65,6 +65,53 @@
       </div>
     </section>
 
+    <section
+      v-if="patientsNeedingDoctor.length || flaggedVisits.length"
+      class="reassign-banner"
+      role="status"
+    >
+      <div>
+        <strong v-if="patientsNeedingDoctor.length">
+          {{ patientsNeedingDoctor.length }}
+          {{ patientsNeedingDoctor.length === 1 ? "patient needs" : "patients need" }}
+          a doctor
+        </strong>
+        <p>
+          <template v-if="doctorsOnBreak.length">
+            On break: {{ doctorsOnBreak.map((doctor) => doctor.name).join(", ") }}.
+          </template>
+          <template v-if="!availableDoctorCount">
+            No doctors are available right now. Flag these patients so everyone
+            can see they are waiting on a doctor.
+          </template>
+          <template v-else>
+            Walk-ins move to the available doctor with the shortest queue.
+            Appointment patients are flagged for you to handle.
+          </template>
+        </p>
+        <p v-if="reassignMessage" class="reassign-result">{{ reassignMessage }}</p>
+        <p v-if="flaggedVisits.length">
+          {{ flaggedVisits.length }} flagged
+          {{ flaggedVisits.length === 1 ? "patient is" : "patients are" }}
+          waiting for their doctor. Open a card to assign another doctor.
+        </p>
+      </div>
+      <button
+        type="button"
+        v-if="patientsNeedingDoctor.length"
+        :disabled="reassigning"
+        @click="reassignPatients"
+      >
+        {{
+          reassigning
+            ? "Updating..."
+            : availableDoctorCount
+              ? "Reassign / flag patients"
+              : "Flag patients"
+        }}
+      </button>
+    </section>
+
     <section class="dashboard-section" aria-labelledby="appointments-title">
       <div class="section-heading">
         <div>
@@ -165,6 +212,12 @@
             >
               {{ visit.visitStatus }}
             </span>
+            <small v-if="doctorTag(visit)" class="attention-tag">
+              {{ doctorTag(visit) }}
+            </small>
+            <small v-if="duplicatePatientIds.has(visit.patientId)" class="attention-tag">
+              In queue twice
+            </small>
             <small v-if="visit.appointmentTime">{{
               visit.appointmentTime
             }}</small>
@@ -429,11 +482,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { auth, db } from "@/services/firebase";
 import {
   assignVisitDoctor,
   callVisit,
+  clearDoctorAttention,
+  reassignVisit,
   changeQueueStatus,
   checkInAppointment,
   deleteStaffVisit,
@@ -459,6 +514,10 @@ const assignableDoctors = ref([]);
 const assignDoctorsLoading = ref(false);
 const assignDoctorId = ref("");
 const assigningDoctor = ref(false);
+const doctors = ref([]);
+const reassigning = ref(false);
+const reassignMessage = ref("");
+let stopDoctors;
 let stopAppointments;
 let stopVisits;
 let stopAuth;
@@ -497,6 +556,111 @@ const queueSummary = computed(() => {
   };
 });
 
+// Story 6: patients whose doctor is on break, or who have no doctor
+const onBreakDoctorIds = computed(
+  () =>
+    new Set(
+      doctors.value
+        .filter((doctor) => doctor.availabilityStatus === "On Break")
+        .map((doctor) => doctor.id),
+    ),
+);
+
+const doctorsOnBreak = computed(() =>
+  doctors.value.filter((doctor) => onBreakDoctorIds.value.has(doctor.id)),
+);
+
+const availableDoctorCount = computed(
+  () =>
+    doctors.value.filter(
+      (doctor) => (doctor.availabilityStatus || "Available") === "Available",
+    ).length,
+);
+
+const ACTIVE_QUEUE_STATUSES = ["Waiting", "Called", "Late"];
+
+function needsDoctor(visit) {
+  return (
+    ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus) &&
+    (!visit.doctorId || onBreakDoctorIds.value.has(visit.doctorId))
+  );
+}
+
+// patients the banner button still has to act on. Flagged appointment
+// patients are already handled (6B); flagged walk-ins come back once a
+// doctor is available again (6C).
+const patientsNeedingDoctor = computed(() =>
+  visits.value
+    .filter(
+      (visit) =>
+        needsDoctor(visit) &&
+        !(
+          visit.needsAttention &&
+          (isPriorityVisit(visit) || !availableDoctorCount.value)
+        ),
+    )
+    .sort(compareQueueOrder),
+);
+
+const flaggedVisits = computed(() =>
+  visits.value.filter(
+    (visit) =>
+      visit.needsAttention && ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus),
+  ),
+);
+
+function doctorTag(visit) {
+  if (visit.needsAttention && needsDoctor(visit)) return "Flagged: doctor on break";
+  if (!needsDoctor(visit)) return "";
+  return visit.doctorId ? "Doctor on break" : "No doctor";
+}
+
+// 6D: the same patient in progress twice today (e.g. appointment + walk-in)
+const duplicatePatientIds = computed(() => {
+  const seen = new Set();
+  const duplicates = new Set();
+  visits.value
+    .filter((visit) =>
+      [...ACTIVE_QUEUE_STATUSES, "Absent", "In Consultation"].includes(
+        visit.visitStatus,
+      ),
+    )
+    .forEach((visit) => {
+      if (!visit.patientId) return;
+      if (seen.has(visit.patientId)) duplicates.add(visit.patientId);
+      seen.add(visit.patientId);
+    });
+  return duplicates;
+});
+
+// 6C: when a flagged patient's own doctor is back on duty, clear the flag
+const clearingFlags = new Set();
+const staleFlags = computed(() =>
+  flaggedVisits.value.filter(
+    (visit) =>
+      visit.doctorId &&
+      doctors.value.some(
+        (doctor) =>
+          doctor.id === visit.doctorId &&
+          (doctor.availabilityStatus || "Available") === "Available",
+      ),
+  ),
+);
+
+watch(staleFlags, (stale) => {
+  stale.forEach(async (visit) => {
+    if (clearingFlags.has(visit.id)) return;
+    clearingFlags.add(visit.id);
+    try {
+      await clearDoctorAttention(visit.id, visit.doctorId);
+    } catch (error) {
+      console.error("Unable to clear the doctor flag.", error);
+    } finally {
+      clearingFlags.delete(visit.id);
+    }
+  });
+});
+
 onMounted(() => {
   stopAuth = auth.onAuthStateChanged((user) => {
     stopListeners();
@@ -504,6 +668,7 @@ onMounted(() => {
     if (user) {
       stopAppointments = watchAppointments();
       stopVisits = watchVisits();
+      stopDoctors = watchDoctors();
     } else {
       appointments.value = [];
       visits.value = [];
@@ -520,8 +685,10 @@ onUnmounted(() => {
 function stopListeners() {
   stopAppointments?.();
   stopVisits?.();
+  stopDoctors?.();
   stopAppointments = undefined;
   stopVisits = undefined;
+  stopDoctors = undefined;
   loadVersion++;
 }
 
@@ -717,6 +884,62 @@ async function callNextPatient(queueType) {
         : error.message || "Unable to call the next patient.";
   } finally {
     callingQueue.value = "";
+  }
+}
+
+function watchDoctors() {
+  return db
+    .collection("doctors")
+    .where("active", "==", true)
+    .onSnapshot(
+      (snapshot) => {
+        doctors.value = snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        }));
+      },
+      (error) => console.error("Unable to watch doctors.", error),
+    );
+}
+
+// spread affected patients across available doctors, shortest queue first
+async function reassignPatients() {
+  reassigning.value = true;
+  reassignMessage.value = "";
+  visitsError.value = "";
+
+  try {
+    const available = await getAvailableDoctorsWithLoad(today.value);
+    const counts = { reassigned: 0, flagged: 0, skipped: 0 };
+
+    for (const visit of patientsNeedingDoctor.value) {
+      // 6B: appointment patients keep their booked doctor and get flagged
+      const doctor =
+        isPriorityVisit(visit) && visit.doctorId
+          ? null
+          : pickShortestQueueDoctor(available);
+      const result = await reassignVisit(visit.id, visit.doctorId || "", doctor);
+      counts[result]++;
+
+      // keep the local counts in step so patients are spread out
+      if (result === "reassigned" && doctor) {
+        doctor.queueLength++;
+      }
+    }
+
+    reassignMessage.value =
+      `Moved ${counts.reassigned} walk-in(s)` +
+      (counts.flagged ? `, flagged ${counts.flagged}` : "") +
+      (counts.skipped ? `, ${counts.skipped} left unchanged` : "") +
+      ".";
+  } catch (error) {
+    console.error("Unable to reassign patients.", error);
+    visitsError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to reassign patients."
+        : error.message || "Unable to reassign patients.";
+  } finally {
+    reassigning.value = false;
   }
 }
 
@@ -1061,6 +1284,44 @@ function getLocalDate() {
   background: #fee4e2;
   color: #b42318;
 }
+.reassign-banner {
+  align-items: center;
+  background: #fff8e6;
+  border: 1px solid #f2d899;
+  border-radius: 10px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 16px 0;
+  padding: 14px 18px;
+}
+
+.reassign-banner p {
+  color: #6b5100;
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.reassign-banner .reassign-result {
+  color: #067647;
+}
+
+.reassign-banner button {
+  flex-shrink: 0;
+}
+
+.attention-tag {
+  color: #906400;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .reassign-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .status-absent {
   background: #eef1f5;
   color: #637083;

@@ -1,6 +1,7 @@
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
+import { findVisitInProgress } from "@/services/queueService";
 
 const TRANSITIONS = {
   call: {
@@ -34,6 +35,69 @@ const TRANSITIONS = {
     },
   },
 };
+
+// Story 6: move a patient off a doctor who went on break (or who has no
+// doctor) to `doctor`. With no doctor available, flag the visit instead.
+// Returns "reassigned", "flagged" or "skipped" (someone already handled it).
+export async function reassignVisit(visitId, fromDoctorId, doctor) {
+  const visitRef = db.collection("visits").doc(visitId);
+
+  return db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+    if (!visitSnapshot.exists) return "skipped";
+
+    const visit = visitSnapshot.data();
+    const stillOnSameDoctor = (visit.doctorId || "") === (fromDoctorId || "");
+
+    if (!stillOnSameDoctor || !ASSIGNABLE_STATUSES.includes(visit.visitStatus)) {
+      return "skipped";
+    }
+
+    if (doctor) {
+      transaction.update(visitRef, {
+        doctorId: doctor.id,
+        doctorName: doctor.name || "",
+        reassignedFromDoctorId: fromDoctorId || "",
+        reassignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        needsAttention: false,
+        attentionReason: "",
+        // a called patient goes back to waiting for their new doctor
+        ...(visit.visitStatus === "Called" ? { visitStatus: "Waiting" } : {}),
+      });
+      return "reassigned";
+    }
+
+    // nobody to move them to: flag for staff (rules need a real doctorId here)
+    if (!fromDoctorId || visit.needsAttention) {
+      return "skipped";
+    }
+
+    transaction.update(visitRef, {
+      needsAttention: true,
+      attentionReason: "Doctor on break and no other doctor is available.",
+    });
+    return "flagged";
+  });
+}
+
+// 6C: the patient's own doctor is back on duty, so the flag is no longer needed
+export async function clearDoctorAttention(visitId, doctorId) {
+  const visitRef = db.collection("visits").doc(visitId);
+
+  return db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+    if (!visitSnapshot.exists) return false;
+
+    const visit = visitSnapshot.data();
+    if (!visit.needsAttention || visit.doctorId !== doctorId) return false;
+
+    transaction.update(visitRef, {
+      needsAttention: false,
+      attentionReason: "",
+    });
+    return true;
+  });
+}
 
 // Story 2: call a patient safely. Re-checks the saved status (so two
 // receptionists can't call the same patient) and keeps one called
@@ -201,6 +265,8 @@ export async function assignVisitDoctor(visitId, doctor) {
       doctorName: doctor.name || "",
       reassignedFromDoctorId: visitSnapshot.data().doctorId || "",
       reassignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      needsAttention: false,
+      attentionReason: "",
     });
   });
 }
@@ -223,6 +289,18 @@ export async function checkInAppointment(appointmentId) {
   const appointmentQueueRef = db
     .collection("appointmentQueueCounters")
     .doc(getClinicDate());
+
+  // 6D: the patient may already be in the walk-in queue
+  const appointmentSnapshot = await appointmentRef.get();
+  const existingVisit = await findVisitInProgress(
+    appointmentSnapshot.data()?.patientId,
+    getClinicDate(),
+  );
+  if (existingVisit && existingVisit.id !== visitRef.id) {
+    throw new Error(
+      "This patient is already in the walk-in queue. Remove them from it before checking in their appointment.",
+    );
+  }
 
   return db.runTransaction(async (transaction) => {
     const [appointmentSnapshot, visitSnapshot, counterSnapshot] =

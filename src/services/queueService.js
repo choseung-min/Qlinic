@@ -74,6 +74,12 @@ export async function joinWalkInQueue(patientId) {
     .doc(`walkin_${patientId}_${visitDate}`);
   const counterRef = db.collection("queueCounters").doc(visitDate);
 
+  // 6D: already in a queue today (e.g. a checked-in appointment)
+  const visitInProgress = await findVisitInProgress(patientId, visitDate);
+  if (visitInProgress && visitInProgress.id !== visitRef.id) {
+    throw createQueueError("already-in-queue");
+  }
+
   // assign a doctor up front; if every doctor is on break, staff allocate one later
   const doctor = pickShortestQueueDoctor(
     await getAvailableDoctorsWithLoad(visitDate),
@@ -160,6 +166,11 @@ export async function registerWalkInPatient({
 
   if (!appointmentTime) {
     throw createQueueError("no-remaining-time-slots");
+  }
+
+  // 6D: don't put a registered patient in the queue twice
+  if (trimmedPatientId && (await findVisitInProgress(trimmedPatientId, visitDate))) {
+    throw createQueueError("already-in-queue");
   }
 
   // staff can pick a doctor; otherwise assign the available doctor with the shortest queue
@@ -273,6 +284,31 @@ function createQueueError(code) {
 function addQueueOperation(error, operation) {
   error.queueOperation = operation;
   return error;
+}
+
+// 6D: a patient may only have one visit in progress per day, across both
+// the appointment and walk-in queues
+const IN_PROGRESS_STATUSES = new Set([
+  "Waiting",
+  "Called",
+  "Late",
+  "Absent",
+  "In Consultation",
+]);
+
+export async function findVisitInProgress(patientId, visitDate = getClinicDate()) {
+  if (!patientId) return null;
+
+  const snapshot = await db
+    .collection("visits")
+    .where("patientId", "==", patientId)
+    .where("visitDate", "==", visitDate)
+    .get();
+
+  const document = snapshot.docs.find((visitDocument) =>
+    IN_PROGRESS_STATUSES.has(visitDocument.data().visitStatus),
+  );
+  return document ? { id: document.id, ...document.data() } : null;
 }
 
 // statuses that count towards a doctor's current queue
