@@ -33,12 +33,68 @@ const TRANSITIONS = {
       medicineStatus: "Collected",
     },
   },
+};
+
+// Story 4: late / absent / arrived. moveToBack puts the patient behind
+// everyone currently in their queue (backOfQueueOrder comes from the page).
+const QUEUE_STATUS_ACTIONS = {
   late: {
     from: ["Waiting", "Called"],
     to: "Late",
-    fields: { visitStatus: "Late" },
+    moveToBack: () => true,
+  },
+  absent: {
+    from: ["Waiting", "Called", "Late"],
+    to: "Absent",
+    moveToBack: () => false,
+  },
+  arrived: {
+    from: ["Late", "Absent"],
+    to: "Waiting",
+    // late patients were already moved back; absent patients rejoin at the back
+    moveToBack: (status) => status === "Absent",
   },
 };
+
+export async function changeQueueStatus(visitId, action, backOfQueueOrder) {
+  const queueAction = QUEUE_STATUS_ACTIONS[action];
+
+  if (!visitId || !queueAction) {
+    throw new Error("This patient cannot be moved from their current status.");
+  }
+
+  const visitRef = db.collection("visits").doc(visitId);
+
+  await db.runTransaction(async (transaction) => {
+    const visitSnapshot = await transaction.get(visitRef);
+
+    if (!visitSnapshot.exists) {
+      throw new Error("This patient is no longer in the queue.");
+    }
+
+    const visit = visitSnapshot.data();
+
+    // check the saved status, not what the page last showed
+    if (!queueAction.from.includes(visit.visitStatus)) {
+      throw new Error(
+        "This patient's status has changed. Please refresh and try again.",
+      );
+    }
+
+    const currentOrder = Number(visit.queueOrder ?? visit.queueNumber ?? 0);
+    const queueOrder =
+      queueAction.moveToBack(visit.visitStatus) &&
+      Number.isFinite(backOfQueueOrder)
+        ? Math.max(backOfQueueOrder, currentOrder)
+        : currentOrder;
+
+    transaction.update(visitRef, {
+      visitStatus: queueAction.to,
+      queueOrder,
+      statusUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+}
 
 export async function updateStaffVisitStatus(visitId, currentStatus, action) {
   const transition = TRANSITIONS[action];

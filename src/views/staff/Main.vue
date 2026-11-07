@@ -355,9 +355,27 @@
                   selectedVisit.visitStatus === 'Called'
                 "
                 type="button"
-                @click="runAction('late')"
+                @click="runQueueAction('late')"
               >
                 Mark as late
+              </button>
+              <button
+                v-if="
+                  ['Waiting', 'Called', 'Late'].includes(
+                    selectedVisit.visitStatus,
+                  )
+                "
+                type="button"
+                @click="runQueueAction('absent', true)"
+              >
+                Mark as absent
+              </button>
+              <button
+                v-if="['Late', 'Absent'].includes(selectedVisit.visitStatus)"
+                type="button"
+                @click="runQueueAction('arrived')"
+              >
+                Mark as arrived
               </button>
               <button
                 v-if="
@@ -415,6 +433,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth, db } from "@/services/firebase";
 import {
   assignVisitDoctor,
+  changeQueueStatus,
   checkInAppointment,
   deleteStaffVisit,
   updateStaffVisitStatus,
@@ -446,7 +465,7 @@ let loadVersion = 0;
 
 const pipeline = computed(() => ({
   registration: visits.value.filter((visit) =>
-    ["Waiting", "Called", "Late"].includes(visit.visitStatus),
+    ["Waiting", "Called", "Late", "Absent"].includes(visit.visitStatus),
   ),
   consultation: visits.value.filter(
     (visit) => visit.visitStatus === "In Consultation",
@@ -584,6 +603,44 @@ async function runAction(action, requiresConfirmation = false) {
         ? "You do not have permission to update this patient."
         : error.message || "Unable to update this patient.";
   }
+}
+
+// Story 4: late / absent / arrived
+async function runQueueAction(action, requiresConfirmation = false) {
+  const visit = selectedVisit.value;
+  if (!visit) return;
+
+  if (
+    requiresConfirmation &&
+    !window.confirm(`Mark ${visit.patientName} as ${action}?`)
+  ) {
+    return;
+  }
+
+  try {
+    await changeQueueStatus(visit.id, action, getBackOfQueueOrder(visit));
+    closeVisitActions();
+  } catch (error) {
+    console.error("Unable to update queue status.", error);
+    actionError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to update this patient."
+        : error.message || "Unable to update this patient.";
+  }
+}
+
+// one place behind the last patient in the same queue (appointment or walk-in)
+function getBackOfQueueOrder(visit) {
+  const sameQueue = visits.value.filter(
+    (other) =>
+      other.id !== visit.id &&
+      isPriorityVisit(other) === isPriorityVisit(visit) &&
+      ["Waiting", "Called", "Late"].includes(other.visitStatus),
+  );
+  const orders = [visit, ...sameQueue]
+    .map(getQueueSortValue)
+    .filter((order) => order < Number.MAX_SAFE_INTEGER);
+  return orders.length ? Math.max(...orders) + 1 : undefined;
 }
 
 async function deleteVisit() {
@@ -782,6 +839,8 @@ function normalizeVisitStatus(status) {
   const statusLabels = {
     waiting: "Waiting",
     called: "Called",
+    late: "Late",
+    absent: "Absent",
     "in consultation": "In Consultation",
     "awaiting medicine": "Awaiting Medicine",
     "awaiting medicine collection": "Awaiting Medicine Collection",
@@ -802,7 +861,9 @@ function appointmentStatusClass(status) {
 }
 
 function visitStatusClass(status) {
-  return status === "Late" ? "status-late" : "status-visit";
+  if (status === "Late") return "status-late";
+  if (status === "Absent") return "status-absent";
+  return "status-visit";
 }
 
 function formatQueueLabel(visit) {
@@ -1003,6 +1064,11 @@ function getLocalDate() {
   background: #fee4e2;
   color: #b42318;
 }
+.status-absent {
+  background: #eef1f5;
+  color: #637083;
+}
+
 .status-late {
   background: #fff3cd;
   color: #8a5a00;

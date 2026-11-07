@@ -3,7 +3,8 @@ import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
 import { getActiveDoctors } from "@/services/doctorService";
 
-const ACTIVE_VISIT_STATUSES = new Set(["Waiting", "Called"]);
+// Late/Absent patients are still in today's queue until staff resolve them
+const ACTIVE_VISIT_STATUSES = new Set(["Waiting", "Called", "Late", "Absent"]);
 export const queueTimeSlots = [
   "09:00",
   "09:30",

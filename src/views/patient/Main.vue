@@ -50,7 +50,17 @@
             <strong>{{ estimatedWait }} min</strong>
           </div>
         </div>
-        <p v-if="patientsAhead === 0" class="next-message">
+        <p v-if="currentVisit.visitStatus === 'Called'" class="next-message">
+          You're being called. Please go to the consultation room now.
+        </p>
+        <p v-else-if="currentVisit.visitStatus === 'Late'" class="queue-note">
+          You were marked late and moved to the back of the queue. Please
+          check in with reception when you arrive.
+        </p>
+        <p v-else-if="currentVisit.visitStatus === 'Absent'" class="queue-note">
+          You were marked absent. Please speak to reception to rejoin the queue.
+        </p>
+        <p v-else-if="patientsAhead === 0" class="next-message">
           You're next! Please head to the clinic now.
         </p>
         <p v-else class="queue-note">
