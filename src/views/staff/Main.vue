@@ -12,7 +12,7 @@
       <div class="section-heading">
         <div>
           <h2 id="queue-summary-title">Current queues</h2>
-          <p class="section-subtitle">Call the next patient when ready.</p>
+          <p class="section-subtitle">Each doctor calls their next patient when ready. Appointments go first.</p>
         </div>
         <router-link
           class="register-patient-button"
@@ -22,46 +22,37 @@
         </router-link>
       </div>
       <div class="queue-summary-grid">
-        <article class="queue-summary-card appointment-queue-summary">
+        <!-- 2A: one queue and Call next per doctor -->
+        <article
+          v-for="queue in doctorQueues"
+          :key="queue.doctor.id"
+          class="queue-summary-card"
+          :class="{ 'queue-summary-card--break': queue.onBreak }"
+        >
           <div>
-            <span class="queue-summary-label">Appointment queue</span>
-            <strong class="queue-summary-number">{{
-              queueSummary.appointment.nextLabel
-            }}</strong>
-            <small>{{ queueSummary.appointment.emptyLabel }}</small>
+            <span class="queue-summary-label">
+              {{ queue.doctor.name }}
+              <span v-if="queue.onBreak" class="break-pill">On break</span>
+            </span>
+            <strong class="queue-summary-number">{{ queue.calledLabel }}</strong>
+            <small>{{ queue.statusLabel }}</small>
           </div>
           <button
             type="button"
             :disabled="
-              callingQueue === 'appointment' ||
-              !queueSummary.appointment.next ||
-              queueSummary.appointment.hasCalledPatient
+              callingDoctorId === queue.doctor.id ||
+              !queue.next ||
+              Boolean(queue.called) ||
+              queue.onBreak
             "
-            @click="callNextPatient('appointment')"
+            @click="callNextPatient(queue)"
           >
-            {{ callingQueue === "appointment" ? "Calling..." : "Call next" }}
+            {{ callingDoctorId === queue.doctor.id ? "Calling..." : "Call next" }}
           </button>
         </article>
-        <article class="queue-summary-card walk-in-queue-summary">
-          <div>
-            <span class="queue-summary-label">Walk-in queue</span>
-            <strong class="queue-summary-number">{{
-              queueSummary.walkIn.nextLabel
-            }}</strong>
-            <small>{{ queueSummary.walkIn.emptyLabel }}</small>
-          </div>
-          <button
-            type="button"
-            :disabled="
-              callingQueue === 'walk-in' ||
-              !queueSummary.walkIn.next ||
-              queueSummary.walkIn.hasCalledPatient
-            "
-            @click="callNextPatient('walk-in')"
-          >
-            {{ callingQueue === "walk-in" ? "Calling..." : "Call next" }}
-          </button>
-        </article>
+        <p v-if="!doctorQueues.length" class="empty-message">
+          No doctors are on the roster today.
+        </p>
       </div>
     </section>
 
@@ -509,7 +500,7 @@ const selectedVisit = ref(null);
 const actionError = ref("");
 const checkedInAppointmentIds = ref(new Set());
 const checkingInAppointmentId = ref("");
-const callingQueue = ref("");
+const callingDoctorId = ref("");
 const assignableDoctors = ref([]);
 const assignDoctorsLoading = ref(false);
 const assignDoctorId = ref("");
@@ -541,20 +532,45 @@ const pipeline = computed(() => ({
   completed: visits.value.filter((visit) => visit.visitStatus === "Completed"),
 }));
 
-const queueSummary = computed(() => {
-  const activeVisits = visits.value.filter((visit) =>
-    ["Waiting", "Called", "Late"].includes(visit.visitStatus),
-  );
-  const appointmentVisits = activeVisits.filter((visit) =>
-    isPriorityVisit(visit),
-  );
-  const walkInVisits = activeVisits.filter((visit) => !isPriorityVisit(visit));
+// 2A/2B: each doctor's own queue. Appointment visits have negative
+// queueOrder, so they sort ahead of walk-ins within a doctor's queue.
+const doctorQueues = computed(() =>
+  [...doctors.value]
+    .sort((first, second) =>
+      String(first.name || "").localeCompare(String(second.name || "")),
+    )
+    .map((doctor) => {
+      const queueVisits = visits.value
+        .filter(
+          (visit) =>
+            visit.doctorId === doctor.id &&
+            ["Waiting", "Called", "Late"].includes(visit.visitStatus),
+        )
+        .sort(compareQueueOrder);
+      const called = queueVisits.find((visit) => visit.visitStatus === "Called");
+      const waiting = queueVisits.filter((visit) => visit.visitStatus === "Waiting");
+      const next = waiting[0];
+      const onBreak = doctor.availabilityStatus === "On Break";
 
-  return {
-    appointment: createQueueSummary(appointmentVisits, "A"),
-    walkIn: createQueueSummary(walkInVisits, "Q"),
-  };
-});
+      let statusLabel = "No patients waiting";
+      if (onBreak) {
+        statusLabel = `${waiting.length} waiting · reassign from the banner`;
+      } else if (called) {
+        statusLabel = "Finish the current patient first";
+      } else if (next) {
+        statusLabel = `Next: ${formatQueueLabel(next)} · ${waiting.length} waiting`;
+      }
+
+      return {
+        doctor,
+        called,
+        next,
+        onBreak,
+        calledLabel: called ? formatQueueLabel(called) : "—",
+        statusLabel,
+      };
+    }),
+);
 
 // Story 6: patients whose doctor is on break, or who have no doctor
 const onBreakDoctorIds = computed(
@@ -853,29 +869,22 @@ async function checkInAppointmentForQueue(appointment) {
   }
 }
 
-async function callNextPatient(queueType) {
-  const queue =
-    queueType === "appointment"
-      ? queueSummary.value.appointment
-      : queueSummary.value.walkIn;
-
-  if (queue.hasCalledPatient) {
+async function callNextPatient(queue) {
+  if (queue.called) {
     visitsError.value =
-      "The current patient must be marked late or moved to in consultation before calling the next patient.";
+      `${queue.doctor.name}'s called patient must be marked late or moved to in consultation first.`;
     return;
   }
 
-  const nextPatient = queue.next;
-
-  if (!nextPatient) {
+  if (!queue.next || queue.onBreak) {
     return;
   }
 
-  callingQueue.value = queueType;
+  callingDoctorId.value = queue.doctor.id;
   visitsError.value = "";
 
   try {
-    await callVisit(nextPatient.id);
+    await callVisit(queue.next.id);
   } catch (error) {
     console.error("Unable to call the next patient.", error);
     visitsError.value =
@@ -883,7 +892,7 @@ async function callNextPatient(queueType) {
         ? "You do not have permission to call the next patient."
         : error.message || "Unable to call the next patient.";
   } finally {
-    callingQueue.value = "";
+    callingDoctorId.value = "";
   }
 }
 
@@ -1096,29 +1105,6 @@ function isPriorityVisit(visit) {
   return String(visit.queueNumber || "").startsWith("A");
 }
 
-function createQueueSummary(queueVisits, prefix) {
-  const next = [...queueVisits]
-    .filter((visit) => visit.visitStatus === "Waiting")
-    .sort(compareQueueOrder)[0];
-  const hasCalledPatient = queueVisits.some(
-    (visit) => visit.visitStatus === "Called",
-  );
-  const calledPatient = queueVisits.find(
-    (visit) => visit.visitStatus === "Called",
-  );
-
-  return {
-    hasCalledPatient,
-    next,
-    nextLabel: calledPatient ? formatQueueLabel(calledPatient) : "—",
-    emptyLabel: hasCalledPatient
-      ? "Finish the current patient first"
-      : next
-        ? `Ready to call next ${prefix} patient`
-        : "No more patients to call",
-  };
-}
-
 function compareQueueOrder(firstVisit, secondVisit) {
   return getQueueSortValue(firstVisit) - getQueueSortValue(secondVisit);
 }
@@ -1187,7 +1173,20 @@ function getLocalDate() {
 .queue-summary-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.queue-summary-card--break {
+  background: #f6f7f9;
+  opacity: 0.85;
+}
+.break-pill {
+  background: #fff4d8;
+  border-radius: 999px;
+  color: #906400;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 6px;
+  padding: 2px 8px;
 }
 .queue-summary-card {
   align-items: center;
@@ -1198,10 +1197,6 @@ function getLocalDate() {
   justify-content: space-between;
   gap: 16px;
   padding: 18px;
-}
-.appointment-queue-summary {
-  background: #eef4f3;
-  border-color: #cbdad8;
 }
 .queue-summary-label,
 .queue-summary-card small {
