@@ -433,6 +433,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth, db } from "@/services/firebase";
 import {
   assignVisitDoctor,
+  callVisit,
   changeQueueStatus,
   checkInAppointment,
   deleteStaffVisit,
@@ -707,11 +708,7 @@ async function callNextPatient(queueType) {
   visitsError.value = "";
 
   try {
-    await updateStaffVisitStatus(
-      nextPatient.id,
-      nextPatient.visitStatus,
-      "call",
-    );
+    await callVisit(nextPatient.id);
   } catch (error) {
     console.error("Unable to call the next patient.", error);
     visitsError.value =
