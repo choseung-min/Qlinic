@@ -1,3 +1,5 @@
+import firebase from "firebase/compat/app";
+import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
 
 export async function resolveDoctorForUser(user) {
@@ -189,15 +191,47 @@ export function watchDoctorAvailability(doctorId, onChange, onError) {
   );
 }
 
-export async function updateDoctorAvailability(doctorId, availabilityStatus) {
+export async function updateDoctorAvailability(
+  doctorId,
+  availabilityStatus,
+  breakDurationMinutes,
+) {
   const allowedStatuses = new Set(["Available", "On Break"]);
 
   if (!doctorId || !allowedStatuses.has(availabilityStatus)) {
     throw new Error("Invalid doctor availability update.");
   }
 
-  await db.collection("doctors").doc(doctorId).update({
-    availabilityStatus,
+  if (
+    availabilityStatus === "On Break" &&
+    (!Number.isInteger(breakDurationMinutes) ||
+      breakDurationMinutes < 5 ||
+      breakDurationMinutes > 240)
+  ) {
+    throw new Error("Break duration must be a whole number between 5 and 240 minutes.");
+  }
+
+  const doctorRef = db.collection("doctors").doc(doctorId);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(doctorRef);
+    if (!snapshot.exists || snapshot.data()?.active !== true) {
+      throw new Error("The doctor profile is not active.");
+    }
+
+    transaction.update(
+      doctorRef,
+      availabilityStatus === "On Break"
+        ? {
+            availabilityStatus,
+            breakStartedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            breakDurationMinutes,
+          }
+        : {
+            availabilityStatus,
+            breakStartedAt: firebase.firestore.FieldValue.delete(),
+            breakDurationMinutes: firebase.firestore.FieldValue.delete(),
+          },
+    );
   });
 }
 

@@ -63,7 +63,7 @@ export function watchWaitingWalkIns(visitDate, onChange, onError) {
     );
 }
 
-export async function joinWalkInQueue(patientId) {
+export async function joinWalkInQueue(patientId, retryOnUnavailable = true) {
   if (!patientId) {
     throw createQueueError("unauthenticated");
   }
@@ -99,6 +99,17 @@ export async function joinWalkInQueue(patientId) {
         counterSnapshot = await transaction.get(counterRef);
       } catch (error) {
         throw addQueueOperation(error, "queue-counter-transaction-read");
+      }
+      if (doctor) {
+        const doctorSnapshot = await transaction.get(
+          db.collection("doctors").doc(doctor.id),
+        );
+        if (!doctorSnapshot.exists || !isDoctorAvailable({
+          id: doctorSnapshot.id,
+          ...doctorSnapshot.data(),
+        })) {
+          throw createQueueError("doctor-unavailable");
+        }
       }
 
       if (existingVisit.exists) {
@@ -144,6 +155,9 @@ export async function joinWalkInQueue(patientId) {
       };
     });
   } catch (error) {
+    if (error.code === "doctor-unavailable" && retryOnUnavailable) {
+      return joinWalkInQueue(patientId, false);
+    }
     throw addQueueOperation(error, error.queueOperation || "queue-transaction");
   }
 }
@@ -187,7 +201,16 @@ export async function registerWalkInPatient({
   const counterRef = db.collection("queueCounters").doc(visitDate);
 
   return db.runTransaction(async (transaction) => {
-    const counterSnapshot = await transaction.get(counterRef);
+    const [counterSnapshot, doctorSnapshot] = await Promise.all([
+      transaction.get(counterRef),
+      transaction.get(db.collection("doctors").doc(doctor.id)),
+    ]);
+    if (
+      !doctorSnapshot.exists ||
+      !isDoctorAvailable({ id: doctorSnapshot.id, ...doctorSnapshot.data() })
+    ) {
+      throw createQueueError("doctor-unavailable");
+    }
     const queueNumber = counterSnapshot.exists
       ? counterSnapshot.data()?.nextQueueNumber || 1
       : 1;

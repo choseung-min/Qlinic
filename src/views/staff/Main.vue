@@ -375,6 +375,7 @@
                     v-for="doctor in assignableDoctors"
                     :key="doctor.id"
                     :value="doctor.id"
+                    :disabled="!isLiveDoctorAvailable(doctor.id)"
                   >
                     {{ doctor.name }} · {{ doctor.queueLength }} in queue
                   </option>
@@ -596,10 +597,7 @@ const availableDoctorCount = computed(
 const ACTIVE_QUEUE_STATUSES = ["Waiting", "Called", "Late"];
 
 function needsDoctor(visit) {
-  return (
-    ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus) &&
-    (!visit.doctorId || onBreakDoctorIds.value.has(visit.doctorId))
-  );
+  return ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus) && !visit.doctorId;
 }
 
 // patients the banner button still has to act on. Flagged appointment
@@ -629,6 +627,15 @@ function doctorTag(visit) {
   if (visit.needsAttention && needsDoctor(visit)) return "Flagged: doctor on break";
   if (!needsDoctor(visit)) return "";
   return visit.doctorId ? "Doctor on break" : "No doctor";
+}
+
+function isLiveDoctorAvailable(doctorId) {
+  const doctor = doctors.value.find((candidate) => candidate.id === doctorId);
+  return Boolean(
+    doctor?.active === true &&
+      (doctor.availabilityStatus || "Available") === "Available" &&
+      doctor.available !== false,
+  );
 }
 
 // 6D: the same patient in progress twice today (e.g. appointment + walk-in)
@@ -755,6 +762,8 @@ async function assignDoctor() {
     actionError.value =
       error.code === "permission-denied"
         ? "You do not have permission to assign doctors."
+        : error.code === "doctor-unavailable"
+          ? "That doctor is no longer available. Choose another doctor."
         : error.message || "Unable to assign a doctor.";
   } finally {
     assigningDoctor.value = false;

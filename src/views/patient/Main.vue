@@ -50,6 +50,9 @@
             <strong>{{ estimatedWaitDisplay }}</strong>
           </div>
         </div>
+        <p v-if="breakNotice" class="break-notice" role="status">
+          {{ breakNotice }}
+        </p>
         <p v-if="currentVisit.visitStatus === 'Called'" class="next-message">
           You're being called. Please go to the consultation room now.
         </p>
@@ -173,13 +176,15 @@ const isInitializingQueue = ref(true);
 const upcomingAppointments = ref([]);
 const currentVisit = ref(null);
 const waitingVisits = ref([]);
-const doctorAvailabilityStatus = ref(null);
+const doctorAvailability = ref(null);
+const breakClock = ref(Date.now());
 const appointmentsError = ref("");
 const queueError = ref("");
 let stopActiveVisitListener;
 let stopWaitingQueueListener;
 let stopDoctorAvailabilityListener;
 let stopAuthListener;
+let breakRefreshTimer;
 
 const patientsAhead = computed(() => {
   if (!currentVisit.value || currentVisit.value.visitStatus !== "Waiting") {
@@ -197,11 +202,54 @@ const queuePosition = computed(() =>
 
 const estimatedWait = computed(() => patientsAhead.value * 15);
 const isDoctorOnBreak = computed(
-  () => doctorAvailabilityStatus.value === "On Break",
+  () => doctorAvailability.value?.availabilityStatus === "On Break",
 );
-const estimatedWaitDisplay = computed(() =>
-  isDoctorOnBreak.value ? "Unavailable" : `${estimatedWait.value} min`,
+const breakEndMillis = computed(() => {
+  const startedAt = getTimestampMillis(doctorAvailability.value?.breakStartedAt);
+  const duration = doctorAvailability.value?.breakDurationMinutes;
+  if (!startedAt || !Number.isInteger(duration)) return null;
+  return startedAt + duration * 60 * 1000;
+});
+const remainingBreakMinutes = computed(() => {
+  if (!breakEndMillis.value) return null;
+  return Math.max(0, Math.ceil((breakEndMillis.value - breakClock.value) / 60000));
+});
+const breakEstimateExpired = computed(
+  () => isDoctorOnBreak.value && remainingBreakMinutes.value === 0,
 );
+const adjustedEstimatedWait = computed(() => {
+  if (
+    currentVisit.value?.visitStatus !== "Waiting" ||
+    !isDoctorOnBreak.value ||
+    remainingBreakMinutes.value == null ||
+    breakEstimateExpired.value
+  ) {
+    return estimatedWait.value;
+  }
+  return estimatedWait.value + remainingBreakMinutes.value;
+});
+const estimatedWaitDisplay = computed(() => {
+  if (currentVisit.value?.visitStatus !== "Waiting") return `${estimatedWait.value} min`;
+  if (breakEstimateExpired.value || (isDoctorOnBreak.value && remainingBreakMinutes.value == null)) {
+    return "Unavailable";
+  }
+  return `${adjustedEstimatedWait.value} min`;
+});
+const breakNotice = computed(() => {
+  if (
+    !isDoctorOnBreak.value ||
+    !["Waiting", "Called"].includes(currentVisit.value?.visitStatus)
+  ) {
+    return "";
+  }
+  if (breakEstimateExpired.value) {
+    return "Your doctor is still on break. The estimated return time has passed, so the waiting-time estimate is unavailable.";
+  }
+  if (remainingBreakMinutes.value == null) {
+    return "Your doctor is currently on break. Waiting time estimates are unavailable.";
+  }
+  return `Your doctor is on break. The displayed wait includes approximately ${remainingBreakMinutes.value} additional minute${remainingBreakMinutes.value === 1 ? "" : "s"} and is only an estimate.`;
+});
 
 async function loadPatientProfile(user) {
   patientName.value = user.displayName?.trim() || "there";
@@ -348,7 +396,9 @@ function startWaitingQueueListener(visitDate) {
 function stopDoctorAvailability() {
   stopDoctorAvailabilityListener?.();
   stopDoctorAvailabilityListener = undefined;
-  doctorAvailabilityStatus.value = null;
+  doctorAvailability.value = null;
+  breakRefreshTimer && clearInterval(breakRefreshTimer);
+  breakRefreshTimer = undefined;
 }
 
 function startDoctorAvailabilityListener(visit) {
@@ -361,11 +411,21 @@ function startDoctorAvailabilityListener(visit) {
   stopDoctorAvailabilityListener = watchDoctorAvailability(
     visit.doctorId,
     (doctor) => {
-      doctorAvailabilityStatus.value = doctor.availabilityStatus || null;
+      doctorAvailability.value = doctor;
+      if (doctor.availabilityStatus === "On Break" && !breakRefreshTimer) {
+        breakClock.value = Date.now();
+        breakRefreshTimer = setInterval(() => {
+          breakClock.value = Date.now();
+        }, 60_000);
+      }
+      if (doctor.availabilityStatus !== "On Break" && breakRefreshTimer) {
+        clearInterval(breakRefreshTimer);
+        breakRefreshTimer = undefined;
+      }
     },
     (error) => {
       console.error("Unable to load doctor availability.", error);
-      doctorAvailabilityStatus.value = null;
+      doctorAvailability.value = null;
     },
   );
 }
@@ -481,7 +541,17 @@ onUnmounted(() => {
   stopActiveVisitListener?.();
   stopWaitingQueueListener?.();
   stopDoctorAvailability();
+  breakRefreshTimer && clearInterval(breakRefreshTimer);
 });
+
+function getTimestampMillis(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  const millis = new Date(value).getTime();
+  return Number.isFinite(millis) ? millis : null;
+}
 </script>
 
 <style scoped>

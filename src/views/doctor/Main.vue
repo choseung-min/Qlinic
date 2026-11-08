@@ -48,6 +48,34 @@
             </button>
           </div>
         </header>
+        <div v-if="showBreakModal" class="modal-backdrop" role="presentation">
+          <section
+            class="break-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="break-modal-title"
+          >
+            <h2 id="break-modal-title">Estimated break duration</h2>
+            <p>Select how long you expect to be away.</p>
+            <label for="break-duration">Duration</label>
+            <select id="break-duration" v-model.number="breakDuration">
+              <option v-for="duration in breakDurations" :key="duration" :value="duration">
+                {{ duration }} minutes
+              </option>
+            </select>
+            <p v-if="breakModalError" class="message error-message" role="alert">
+              {{ breakModalError }}
+            </p>
+            <div class="modal-actions">
+              <button type="button" :disabled="isUpdatingAvailability" @click="closeBreakModal">
+                Cancel
+              </button>
+              <button type="button" :disabled="isUpdatingAvailability" @click="confirmBreak">
+                {{ isUpdatingAvailability ? "Saving..." : "Confirm Break" }}
+              </button>
+            </div>
+          </section>
+        </div>
         <p v-if="availabilityError" class="message error-message" role="alert">
           {{ availabilityError }}
         </p>
@@ -121,6 +149,10 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const availabilityError = ref("");
 const isUpdatingAvailability = ref(false);
+const showBreakModal = ref(false);
+const breakDuration = ref(30);
+const breakModalError = ref("");
+const breakDurations = [15, 30, 45, 60];
 let unsubscribeAuth;
 let unsubscribeQueue;
 let unsubscribeDoctor;
@@ -218,13 +250,17 @@ async function toggleAvailability() {
     return;
   }
 
-  const nextStatus =
-    availabilityLabel.value === "On Break" ? "Available" : "On Break";
+  if (availabilityLabel.value !== "On Break") {
+    breakModalError.value = "";
+    showBreakModal.value = true;
+    return;
+  }
+
   isUpdatingAvailability.value = true;
   availabilityError.value = "";
 
   try {
-    await updateDoctorAvailability(doctor.value.id, nextStatus);
+    await updateDoctorAvailability(doctor.value.id, "Available");
   } catch (error) {
     console.error("Unable to update doctor availability.", {
       code: error.code,
@@ -234,6 +270,41 @@ async function toggleAvailability() {
       error.code === "permission-denied"
         ? "You do not have permission to change your availability."
         : "Unable to update your availability. Please try again.";
+  } finally {
+    isUpdatingAvailability.value = false;
+  }
+}
+
+function closeBreakModal() {
+  if (!isUpdatingAvailability.value) {
+    showBreakModal.value = false;
+    breakModalError.value = "";
+  }
+}
+
+async function confirmBreak() {
+  if (!Number.isInteger(breakDuration.value)) {
+    breakModalError.value = "Choose a valid break duration.";
+    return;
+  }
+
+  isUpdatingAvailability.value = true;
+  breakModalError.value = "";
+  availabilityError.value = "";
+
+  try {
+    await updateDoctorAvailability(
+      doctor.value.id,
+      "On Break",
+      breakDuration.value,
+    );
+    showBreakModal.value = false;
+  } catch (error) {
+    console.error("Unable to start doctor break.", error);
+    breakModalError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to change your availability."
+        : error.message || "Unable to start your break.";
   } finally {
     isUpdatingAvailability.value = false;
   }
@@ -399,6 +470,45 @@ function normalizeAvailability(status) {
   align-items: center;
   display: flex;
   gap: 20px;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgb(15 23 42 / 35%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 10;
+}
+
+.break-modal {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  display: grid;
+  gap: 10px;
+  max-width: 360px;
+  padding: 24px;
+  width: calc(100% - 32px);
+}
+
+.break-modal h2,
+.break-modal p {
+  margin: 0;
+}
+
+.break-modal select {
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  font: inherit;
+  padding: 9px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 .availability-badge,

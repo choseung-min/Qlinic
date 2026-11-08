@@ -54,6 +54,19 @@ export async function reassignVisit(visitId, fromDoctorId, doctor) {
     }
 
     if (doctor) {
+      const doctorSnapshot = await transaction.get(
+        db.collection("doctors").doc(doctor.id),
+      );
+      if (
+        !doctorSnapshot.exists ||
+        doctorSnapshot.data()?.active !== true ||
+        (doctorSnapshot.data()?.availabilityStatus || "Available") !==
+          "Available" ||
+        doctorSnapshot.data()?.available === false
+      ) {
+        return "skipped";
+      }
+
       transaction.update(visitRef, {
         doctorId: doctor.id,
         doctorName: doctor.name || "",
@@ -251,9 +264,22 @@ export async function assignVisitDoctor(visitId, doctor) {
 
   await db.runTransaction(async (transaction) => {
     const visitSnapshot = await transaction.get(visitRef);
+    const doctorRef = db.collection("doctors").doc(doctor.id);
+    const doctorSnapshot = await transaction.get(doctorRef);
 
     if (!visitSnapshot.exists) {
       throw new Error("This patient is no longer in the queue.");
+    }
+
+    if (
+      !doctorSnapshot.exists ||
+      doctorSnapshot.data()?.active !== true ||
+      (doctorSnapshot.data()?.availabilityStatus || "Available") !== "Available" ||
+      doctorSnapshot.data()?.available === false
+    ) {
+      const error = new Error("That doctor is no longer available.");
+      error.code = "doctor-unavailable";
+      throw error;
     }
 
     if (!ASSIGNABLE_STATUSES.includes(visitSnapshot.data().visitStatus)) {

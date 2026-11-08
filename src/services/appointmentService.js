@@ -22,7 +22,7 @@ export const clinicTimeSlots = [
 
 export async function getBookedTimeSlots({ doctorId, appointmentDate }) {
   const snapshot = await db
-    .collection("appointments")
+    .collection("appointmentSlots")
     .where("doctorId", "==", doctorId)
     .where("appointmentDate", "==", appointmentDate)
     .where("status", "==", "booked")
@@ -60,7 +60,8 @@ export async function createAppointment({
 
   const doctorRef = db.collection("doctors").doc(doctorId);
   const appointmentCollection = db.collection("appointments");
-  const slotQuery = appointmentCollection
+  const slotCollection = db.collection("appointmentSlots");
+  const slotQuery = slotCollection
     .where("doctorId", "==", doctorId)
     .where("appointmentDate", "==", appointmentDate)
     .where("appointmentTime", "==", appointmentTime)
@@ -73,6 +74,7 @@ export async function createAppointment({
     .where("status", "==", "booked");
   const slotId = `${doctorId}_${appointmentDate}_${appointmentTime.replace(":", "-")}`;
   const appointmentRef = appointmentCollection.doc(slotId);
+  const slotRef = slotCollection.doc(slotId);
 
   const [doctorSnapshot, slotSnapshot, duplicateSnapshot] = await Promise.all([
     doctorRef.get(),
@@ -93,9 +95,12 @@ export async function createAppointment({
   }
 
   await db.runTransaction(async (transaction) => {
-    const existingSlot = await transaction.get(appointmentRef);
+    const [existingAppointment, existingSlot] = await Promise.all([
+      transaction.get(appointmentRef),
+      transaction.get(slotRef),
+    ]);
 
-    if (existingSlot.exists) {
+    if (existingAppointment.exists || existingSlot.exists) {
       throw createAppointmentError("slot-taken");
     }
 
@@ -107,6 +112,13 @@ export async function createAppointment({
       reasonForVisit: reasonForVisit.trim(),
       status: "booked",
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.set(slotRef, {
+      appointmentId: appointmentRef.id,
+      doctorId,
+      appointmentDate,
+      appointmentTime,
+      status: "booked",
     });
   });
 
@@ -190,7 +202,8 @@ export async function rescheduleAppointment({
     throw createAppointmentError('invalid-doctor');
   }
 
-  const conflictingSnapshot = await appointments
+  const conflictingSnapshot = await db
+    .collection('appointmentSlots')
     .where('doctorId', '==', current.doctorId)
     .where('appointmentDate', '==', appointmentDate)
     .where('appointmentTime', '==', appointmentTime)
@@ -201,10 +214,21 @@ export async function rescheduleAppointment({
     throw createAppointmentError('slot-taken');
   }
 
-  return db.runTransaction(async (transaction) => {
-    const oldSnapshot = await transaction.get(oldRef);
+  const oldSlotRef = db.collection('appointmentSlots').doc(
+    `${current.doctorId}_${current.appointmentDate}_${current.appointmentTime.replace(':', '-')}`,
+  );
+  const newSlotRef = db.collection('appointmentSlots').doc(
+    `${current.doctorId}_${appointmentDate}_${appointmentTime.replace(':', '-')}`,
+  );
 
-    if (!oldSnapshot.exists) {
+  return db.runTransaction(async (transaction) => {
+    const [oldSnapshot, oldSlotSnapshot, newSlotSnapshot] = await Promise.all([
+      transaction.get(oldRef),
+      transaction.get(oldSlotRef),
+      transaction.get(newSlotRef),
+    ]);
+
+    if (!oldSnapshot.exists || newSlotSnapshot.exists) {
       throw createAppointmentError('appointment-not-found');
     }
 
@@ -221,6 +245,14 @@ export async function rescheduleAppointment({
       appointmentDate,
       appointmentTime,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.delete(oldSlotRef);
+    transaction.set(newSlotRef, {
+      appointmentId,
+      doctorId: current.doctorId,
+      appointmentDate,
+      appointmentTime,
+      status: 'booked',
     });
 
     return appointmentId;
@@ -259,10 +291,18 @@ export async function cancelAppointment({ appointmentId, patientId }) {
       throw createAppointmentError('cannot-cancel');
     }
 
+    const slotRef = db.collection('appointmentSlots').doc(
+      `${current.doctorId}_${current.appointmentDate}_${current.appointmentTime.replace(':', '-')}`,
+    );
+    const slotSnapshot = await transaction.get(slotRef);
+
     transaction.update(oldRef, {
       status: 'cancelled',
       cancelledAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
+    if (slotSnapshot.exists) {
+      transaction.delete(slotRef);
+    }
 
     return appointmentId;
   });
