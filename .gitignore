@@ -46,3 +46,6 @@ __screenshots__/
 firebase-debug.log
 
 *service-accounts*.json
+
+# firestore
+firestore.rules
