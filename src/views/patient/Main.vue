@@ -47,9 +47,13 @@
           </div>
           <div>
             <span>Est. Wait</span>
-            <strong>{{ estimatedWait }} min</strong>
+            <strong>{{ estimatedWaitDisplay }}</strong>
           </div>
         </div>
+        <p v-if="isDoctorOnBreak" class="break-notice" role="status">
+          Your doctor is currently on break. Your estimated waiting time may be
+          affected.
+        </p>
         <p v-if="patientsAhead === 0" class="next-message">
           You're next! Please head to the clinic now.
         </p>
@@ -152,6 +156,7 @@ import {
   watchActiveWalkInVisit,
   watchWaitingWalkIns,
 } from "@/services/queueService";
+import { watchDoctorAvailability } from "@/services/doctorService";
 
 const isJoining = ref(false);
 const router = useRouter();
@@ -162,10 +167,12 @@ const isInitializingQueue = ref(true);
 const upcomingAppointments = ref([]);
 const currentVisit = ref(null);
 const waitingVisits = ref([]);
+const doctorAvailabilityStatus = ref(null);
 const appointmentsError = ref("");
 const queueError = ref("");
 let stopActiveVisitListener;
 let stopWaitingQueueListener;
+let stopDoctorAvailabilityListener;
 let stopAuthListener;
 
 const patientsAhead = computed(() => {
@@ -183,6 +190,12 @@ const queuePosition = computed(() =>
 );
 
 const estimatedWait = computed(() => patientsAhead.value * 15);
+const isDoctorOnBreak = computed(
+  () => doctorAvailabilityStatus.value === "On Break",
+);
+const estimatedWaitDisplay = computed(() =>
+  isDoctorOnBreak.value ? "Unavailable" : `${estimatedWait.value} min`,
+);
 
 async function loadPatientProfile(user) {
   patientName.value = user.displayName?.trim() || "there";
@@ -319,12 +332,38 @@ function startWaitingQueueListener(visitDate) {
   );
 }
 
+function stopDoctorAvailability() {
+  stopDoctorAvailabilityListener?.();
+  stopDoctorAvailabilityListener = undefined;
+  doctorAvailabilityStatus.value = null;
+}
+
+function startDoctorAvailabilityListener(visit) {
+  stopDoctorAvailability();
+
+  if (!visit?.doctorId) {
+    return;
+  }
+
+  stopDoctorAvailabilityListener = watchDoctorAvailability(
+    visit.doctorId,
+    (doctor) => {
+      doctorAvailabilityStatus.value = doctor.availabilityStatus || null;
+    },
+    (error) => {
+      console.error("Unable to load doctor availability.", error);
+      doctorAvailabilityStatus.value = null;
+    },
+  );
+}
+
 function startActiveVisitListener(patientId) {
   stopActiveVisitListener = watchActiveWalkInVisit(
     patientId,
     (visit) => {
       currentVisit.value = visit;
       isInitializingQueue.value = false;
+      startDoctorAvailabilityListener(visit);
 
       if (visit) {
         startWaitingQueueListener(visit.visitDate);
@@ -404,6 +443,7 @@ onMounted(() => {
   stopAuthListener = auth.onAuthStateChanged((user) => {
     stopActiveVisitListener?.();
     stopWaitingQueueListener?.();
+    stopDoctorAvailability();
 
     if (!user) {
       patientName.value = "there";
@@ -425,6 +465,7 @@ onUnmounted(() => {
   stopAuthListener?.();
   stopActiveVisitListener?.();
   stopWaitingQueueListener?.();
+  stopDoctorAvailability();
 });
 </script>
 
@@ -626,6 +667,14 @@ onUnmounted(() => {
   background: #cdf7ed;
   border-radius: 7px;
   color: var(--color-primary-dark) !important;
+  margin-top: 20px !important;
+  padding: 11px 12px;
+}
+
+.break-notice {
+  background: #fff4d6;
+  border-radius: 7px;
+  color: #8a5a00 !important;
   margin-top: 20px !important;
   padding: 11px 12px;
 }
