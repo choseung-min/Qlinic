@@ -41,6 +41,7 @@ const TRANSITIONS = {
 // Returns "reassigned", "flagged" or "skipped" (someone already handled it).
 export async function reassignVisit(visitId, fromDoctorId, doctor) {
   const visitRef = db.collection("visits").doc(visitId);
+  const doctorRef = doctor ? db.collection("doctors").doc(doctor.id) : null;
 
   return db.runTransaction(async (transaction) => {
     const visitSnapshot = await transaction.get(visitRef);
@@ -54,6 +55,19 @@ export async function reassignVisit(visitId, fromDoctorId, doctor) {
     }
 
     if (doctor) {
+      const doctorSnapshot = await transaction.get(doctorRef);
+      const doctorData = doctorSnapshot.data();
+      if (
+        !doctorSnapshot.exists ||
+        doctorData.active !== true ||
+        (doctorData.availabilityStatus || "Available") !== "Available" ||
+        doctorData.available === false
+      ) {
+        const error = new Error("That doctor is no longer available.");
+        error.code = "doctor-unavailable";
+        throw error;
+      }
+
       transaction.update(visitRef, {
         doctorId: doctor.id,
         doctorName: doctor.name || "",
@@ -248,22 +262,40 @@ export async function assignVisitDoctor(visitId, doctor) {
   }
 
   const visitRef = db.collection("visits").doc(visitId);
+  const doctorRef = db.collection("doctors").doc(doctor.id);
 
   await db.runTransaction(async (transaction) => {
-    const visitSnapshot = await transaction.get(visitRef);
+    const [visitSnapshot, doctorSnapshot] = await Promise.all([
+      transaction.get(visitRef),
+      transaction.get(doctorRef),
+    ]);
 
     if (!visitSnapshot.exists) {
       throw new Error("This patient is no longer in the queue.");
     }
 
-    if (!ASSIGNABLE_STATUSES.includes(visitSnapshot.data().visitStatus)) {
+    const visit = visitSnapshot.data();
+    const currentDoctor = doctorSnapshot.data();
+
+    if (!ASSIGNABLE_STATUSES.includes(visit.visitStatus)) {
       throw new Error("Doctors can only be changed before consultation starts.");
+    }
+
+    if (
+      !doctorSnapshot.exists ||
+      currentDoctor.active !== true ||
+      (currentDoctor.availabilityStatus || "Available") !== "Available" ||
+      currentDoctor.available === false
+    ) {
+      const error = new Error("That doctor is no longer available.");
+      error.code = "doctor-unavailable";
+      throw error;
     }
 
     transaction.update(visitRef, {
       doctorId: doctor.id,
       doctorName: doctor.name || "",
-      reassignedFromDoctorId: visitSnapshot.data().doctorId || "",
+      reassignedFromDoctorId: visit.doctorId || "",
       reassignedAt: firebase.firestore.FieldValue.serverTimestamp(),
       needsAttention: false,
       attentionReason: "",

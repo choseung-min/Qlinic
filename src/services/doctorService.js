@@ -1,3 +1,5 @@
+import firebase from "firebase/compat/app";
+import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
 
 export async function resolveDoctorForUser(user) {
@@ -189,15 +191,38 @@ export function watchDoctorAvailability(doctorId, onChange, onError) {
   );
 }
 
-export async function updateDoctorAvailability(doctorId, availabilityStatus) {
+export async function updateDoctorAvailability(
+  doctorId,
+  availabilityStatus,
+  breakDurationMinutes,
+) {
   const allowedStatuses = new Set(["Available", "On Break"]);
 
   if (!doctorId || !allowedStatuses.has(availabilityStatus)) {
     throw new Error("Invalid doctor availability update.");
   }
 
+  if (availabilityStatus === "On Break") {
+    if (
+      !Number.isInteger(breakDurationMinutes) ||
+      breakDurationMinutes < 5 ||
+      breakDurationMinutes > 240
+    ) {
+      throw new Error("Break duration must be a whole number from 5 to 240 minutes.");
+    }
+
+    await db.collection("doctors").doc(doctorId).update({
+      availabilityStatus,
+      breakStartedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      breakDurationMinutes,
+    });
+    return;
+  }
+
   await db.collection("doctors").doc(doctorId).update({
-    availabilityStatus,
+    availabilityStatus: "Available",
+    breakStartedAt: firebase.firestore.FieldValue.delete(),
+    breakDurationMinutes: firebase.firestore.FieldValue.delete(),
   });
 }
 

@@ -97,6 +97,35 @@
         </section>
       </template>
     </main>
+
+    <div v-if="isBreakModalOpen" class="modal-backdrop" role="presentation">
+      <section
+        class="break-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="break-modal-title"
+      >
+        <h2 id="break-modal-title">Estimated break duration</h2>
+        <p>Choose how long you expect to be away. You can return early at any time.</p>
+        <label for="break-duration">Duration in minutes</label>
+        <select id="break-duration" v-model.number="breakDurationMinutes">
+          <option v-for="duration in breakDurationOptions" :key="duration" :value="duration">
+            {{ duration }} minutes
+          </option>
+        </select>
+        <p v-if="breakModalError" class="message error-message" role="alert">
+          {{ breakModalError }}
+        </p>
+        <div class="break-modal-actions">
+          <button type="button" class="secondary-button" :disabled="isUpdatingAvailability" @click="closeBreakModal">
+            Cancel
+          </button>
+          <button type="button" :disabled="isUpdatingAvailability" @click="confirmBreak">
+            {{ isUpdatingAvailability ? "Saving..." : "Confirm Break" }}
+          </button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -121,6 +150,10 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const availabilityError = ref("");
 const isUpdatingAvailability = ref(false);
+const isBreakModalOpen = ref(false);
+const breakModalError = ref("");
+const breakDurationMinutes = ref(30);
+const breakDurationOptions = [15, 30, 45, 60];
 let unsubscribeAuth;
 let unsubscribeQueue;
 let unsubscribeDoctor;
@@ -218,13 +251,18 @@ async function toggleAvailability() {
     return;
   }
 
-  const nextStatus =
-    availabilityLabel.value === "On Break" ? "Available" : "On Break";
+  if (availabilityLabel.value !== "On Break") {
+    breakModalError.value = "";
+    breakDurationMinutes.value = 30;
+    isBreakModalOpen.value = true;
+    return;
+  }
+
   isUpdatingAvailability.value = true;
   availabilityError.value = "";
 
   try {
-    await updateDoctorAvailability(doctor.value.id, nextStatus);
+    await updateDoctorAvailability(doctor.value.id, "Available");
   } catch (error) {
     console.error("Unable to update doctor availability.", {
       code: error.code,
@@ -234,6 +272,48 @@ async function toggleAvailability() {
       error.code === "permission-denied"
         ? "You do not have permission to change your availability."
         : "Unable to update your availability. Please try again.";
+  } finally {
+    isUpdatingAvailability.value = false;
+  }
+}
+
+function closeBreakModal() {
+  if (!isUpdatingAvailability.value) {
+    isBreakModalOpen.value = false;
+    breakModalError.value = "";
+  }
+}
+
+async function confirmBreak() {
+  if (
+    !Number.isInteger(breakDurationMinutes.value) ||
+    breakDurationMinutes.value < 5 ||
+    breakDurationMinutes.value > 240
+  ) {
+    breakModalError.value = "Enter a whole number from 5 to 240 minutes.";
+    return;
+  }
+
+  isUpdatingAvailability.value = true;
+  breakModalError.value = "";
+  availabilityError.value = "";
+
+  try {
+    await updateDoctorAvailability(
+      doctor.value.id,
+      "On Break",
+      breakDurationMinutes.value,
+    );
+    isBreakModalOpen.value = false;
+  } catch (error) {
+    console.error("Unable to start doctor break.", {
+      code: error.code,
+      message: error.message,
+    });
+    breakModalError.value =
+      error.code === "permission-denied"
+        ? "You do not have permission to change your availability."
+        : "Unable to start your break. Please try again.";
   } finally {
     isUpdatingAvailability.value = false;
   }
@@ -567,6 +647,68 @@ button:disabled {
 
 .error-message {
   color: #b42318;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgb(20 29 53 / 35%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 10;
+}
+
+.break-modal {
+  background: var(--color-surface);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+  max-width: 430px;
+  padding: 28px;
+  width: 100%;
+}
+
+.break-modal h2 {
+  color: #141d35;
+  margin: 0 0 10px;
+}
+
+.break-modal p {
+  color: var(--color-text-muted);
+  margin: 0 0 20px;
+}
+
+.break-modal label,
+.break-modal select {
+  display: block;
+  width: 100%;
+}
+
+.break-modal label {
+  color: #34445b;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.break-modal select {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font: inherit;
+  padding: 12px;
+}
+
+.break-modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.secondary-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: #34445b;
 }
 
 @media (max-width: 760px) {
