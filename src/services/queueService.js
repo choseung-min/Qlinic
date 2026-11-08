@@ -87,18 +87,16 @@ export async function joinWalkInQueue(patientId) {
 
   try {
     return await db.runTransaction(async (transaction) => {
-      let existingVisit;
-      try {
-        existingVisit = await transaction.get(visitRef);
-      } catch (error) {
-        throw addQueueOperation(error, "active-visit-transaction-read");
+      const reads = [transaction.get(visitRef), transaction.get(counterRef)];
+      if (doctor?.id) {
+        reads.push(transaction.get(db.collection("doctors").doc(doctor.id)));
       }
 
-      let counterSnapshot;
-      try {
-        counterSnapshot = await transaction.get(counterRef);
-      } catch (error) {
-        throw addQueueOperation(error, "queue-counter-transaction-read");
+      const [existingVisit, counterSnapshot, doctorSnapshot] =
+        await Promise.all(reads);
+
+      if (doctor?.id) {
+        assertAvailableDoctorSnapshot(doctorSnapshot, doctor.id);
       }
 
       if (existingVisit.exists) {
@@ -187,7 +185,11 @@ export async function registerWalkInPatient({
   const counterRef = db.collection("queueCounters").doc(visitDate);
 
   return db.runTransaction(async (transaction) => {
-    const counterSnapshot = await transaction.get(counterRef);
+    const [counterSnapshot, doctorSnapshot] = await Promise.all([
+      transaction.get(counterRef),
+      transaction.get(db.collection("doctors").doc(doctor.id)),
+    ]);
+    assertAvailableDoctorSnapshot(doctorSnapshot, doctor.id);
     const queueNumber = counterSnapshot.exists
       ? counterSnapshot.data()?.nextQueueNumber || 1
       : 1;
@@ -284,6 +286,19 @@ function createQueueError(code) {
 function addQueueOperation(error, operation) {
   error.queueOperation = operation;
   return error;
+}
+
+function assertAvailableDoctorSnapshot(snapshot, doctorId) {
+  if (
+    !snapshot.exists ||
+    snapshot.data()?.active !== true ||
+    !isDoctorAvailable(snapshot.data())
+  ) {
+    throw addQueueOperation(
+      createQueueError("doctor-unavailable"),
+      `doctor-availability-transaction-${doctorId}`,
+    );
+  }
 }
 
 // 6D: a patient may only have one visit in progress per day, across both

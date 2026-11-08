@@ -572,7 +572,9 @@ const doctorQueues = computed(() =>
     }),
 );
 
-// Story 6: patients whose doctor is on break, or who have no doctor
+// Only genuinely unassigned patients are candidates for the shared-queue
+// allocation action. Patients already assigned to a doctor remain there
+// while that doctor is on break.
 const onBreakDoctorIds = computed(
   () =>
     new Set(
@@ -589,7 +591,10 @@ const doctorsOnBreak = computed(() =>
 const availableDoctorCount = computed(
   () =>
     doctors.value.filter(
-      (doctor) => (doctor.availabilityStatus || "Available") === "Available",
+      (doctor) =>
+        doctor.active === true &&
+        (doctor.availabilityStatus || "Available") === "Available" &&
+        doctor.available !== false,
     ).length,
 );
 
@@ -598,7 +603,7 @@ const ACTIVE_QUEUE_STATUSES = ["Waiting", "Called", "Late"];
 function needsDoctor(visit) {
   return (
     ACTIVE_QUEUE_STATUSES.includes(visit.visitStatus) &&
-    (!visit.doctorId || onBreakDoctorIds.value.has(visit.doctorId))
+    !visit.doctorId
   );
 }
 
@@ -626,9 +631,9 @@ const flaggedVisits = computed(() =>
 );
 
 function doctorTag(visit) {
-  if (visit.needsAttention && needsDoctor(visit)) return "Flagged: doctor on break";
+  if (visit.needsAttention && needsDoctor(visit)) return "Flagged: doctor unavailable";
   if (!needsDoctor(visit)) return "";
-  return visit.doctorId ? "Doctor on break" : "No doctor";
+  return "No doctor";
 }
 
 // 6D: the same patient in progress twice today (e.g. appointment + walk-in)
@@ -755,6 +760,8 @@ async function assignDoctor() {
     actionError.value =
       error.code === "permission-denied"
         ? "You do not have permission to assign doctors."
+        : error.code === "doctor-unavailable"
+          ? "That doctor is no longer available. Choose another doctor."
         : error.message || "Unable to assign a doctor.";
   } finally {
     assigningDoctor.value = false;
@@ -906,6 +913,12 @@ function watchDoctors() {
           id: document.id,
           ...document.data(),
         }));
+        if (
+          selectedVisit.value &&
+          ["Waiting", "Called", "Late"].includes(selectedVisit.value.visitStatus)
+        ) {
+          loadAssignableDoctors(selectedVisit.value);
+        }
       },
       (error) => console.error("Unable to watch doctors.", error),
     );
