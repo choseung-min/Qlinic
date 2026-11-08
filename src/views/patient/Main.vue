@@ -34,7 +34,7 @@
         </div>
         <div class="queue-stats">
           <div class="queue-number">
-            <strong>Q{{ formatQueueNumber(currentVisit.queueNumber) }}</strong>
+            <strong>{{ formatQueueLabel(currentVisit.queueNumber) }}</strong>
             <span>Queue No.</span>
           </div>
           <div>
@@ -50,11 +50,17 @@
             <strong>{{ estimatedWaitDisplay }}</strong>
           </div>
         </div>
-        <p v-if="isDoctorOnBreak" class="break-notice" role="status">
-          Your doctor is currently on break. Your estimated waiting time may be
-          affected.
+        <p v-if="currentVisit.visitStatus === 'Called'" class="next-message">
+          You're being called. Please go to the consultation room now.
         </p>
-        <p v-if="patientsAhead === 0" class="next-message">
+        <p v-else-if="currentVisit.visitStatus === 'Late'" class="queue-note">
+          You were marked late and moved to the back of the queue. Please check
+          in with reception when you arrive.
+        </p>
+        <p v-else-if="currentVisit.visitStatus === 'Absent'" class="queue-note">
+          You were marked absent. Please speak to reception to rejoin the queue.
+        </p>
+        <p v-else-if="patientsAhead === 0" class="next-message">
           You're next! Please head to the clinic now.
         </p>
         <p v-else class="queue-note">
@@ -148,7 +154,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { auth , db } from "@/services/firebase";
+import { auth, db } from "@/services/firebase";
 import PatientReminders from "@/components/patient/PatientReminders.vue";
 import {
   joinWalkInQueue,
@@ -302,6 +308,13 @@ function formatQueueNumber(queueNumber) {
   return String(queueNumber).padStart(2, "0");
 }
 
+function formatQueueLabel(queueNumber) {
+  const value = String(queueNumber);
+  return value.startsWith("A")
+    ? `A${formatQueueNumber(value.slice(1))}`
+    : `Q${formatQueueNumber(value)}`;
+}
+
 function openAppointment(appointmentId) {
   router.push({ name: "History", query: { appointmentId } });
 }
@@ -402,9 +415,11 @@ async function handleJoinQueue() {
     queueError.value =
       error.code === "duplicate-booking"
         ? "You are already in today's walk-in queue."
-        : error.code === "permission-denied"
-          ? `You do not have permission to join the queue (${error.queueOperation || "unknown operation"}).`
-          : `Unable to join the queue (${error.queueOperation || "unknown operation"}: ${error.code || "unknown error"}).`;
+        : error.code === "already-in-queue"
+          ? "You are already in today's queue (for example, a checked-in appointment)."
+          : error.code === "permission-denied"
+            ? `You do not have permission to join the queue (${error.queueOperation || "unknown operation"}).`
+            : `Unable to join the queue (${error.queueOperation || "unknown operation"}: ${error.code || "unknown error"}).`;
   } finally {
     isJoining.value = false;
   }
