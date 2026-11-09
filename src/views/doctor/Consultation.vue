@@ -1,29 +1,23 @@
 <template>
   <div class="doctor-shell">
-    <header class="doctor-nav">
-      <router-link class="doctor-brand" to="/doctor" aria-label="Qlinic doctor dashboard">
-        <span class="brand-mark" aria-hidden="true">♧</span>
-        <span><strong>Qlinic</strong><small>DOCTOR</small></span>
-      </router-link>
-      <router-link class="dashboard-link" to="/doctor">▦ Dashboard</router-link>
-      <div class="doctor-account">
-        <span>{{ doctor.name || user?.displayName || "Doctor" }}</span>
-        <button class="logout-button" type="button" @click="handleLogout">↪ Log out</button>
-      </div>
-    </header>
+    <DoctorHeader :doctor-name="doctor.name || user?.displayName || 'Doctor'" @logout="handleLogout" />
 
     <main class="consultation-page">
       <button class="back-button" type="button" @click="goToPatient">
         ← Back to Patient Information
       </button>
+
       <p v-if="isLoading" class="message">Loading consultation...</p>
       <p v-else-if="errorMessage" class="message error-message" role="alert">
         {{ errorMessage }}
       </p>
+
       <template v-else>
         <header class="consultation-header">
           <div class="patient-banner">
-            <div class="queue-number">{{ formatQueueNumber(visit.queueNumber) }}</div>
+            <div class="queue-number">
+              {{ formatQueueNumber(visit.queueNumber) }}
+            </div>
             <div>
               <h1>{{ patient.displayName || "Patient" }}</h1>
               <p>
@@ -33,46 +27,34 @@
               </p>
             </div>
           </div>
-          <span class="status-badge">{{ consultation.status }}</span>
+          <span class="status-badge" :class="String(consultation.status || '').toLowerCase().replaceAll(' ', '-')">
+            {{ consultation.status }}
+          </span>
         </header>
+
         <section class="form-card">
-          <label for="diagnosis">Diagnosis <span aria-hidden="true">*</span></label>
-          <textarea
-            id="diagnosis"
-            v-model="form.diagnosis"
-            placeholder="Enter diagnosis"
-            rows="4"
-            :disabled="isSaving || isCompleting || !isOngoing"
-          />
+          <label for="diagnosis">
+            Diagnosis <span aria-hidden="true">*</span>
+          </label>
+          <textarea id="diagnosis" v-model="form.diagnosis" placeholder="Enter diagnosis" rows="4"
+            :disabled="isSaving || isCompleting || !isOngoing" />
 
           <label for="notes">Consultation Notes</label>
-          <textarea
-            id="notes"
-            v-model="form.notes"
-            placeholder="Enter consultation notes, observations, etc."
-            rows="5"
-            :disabled="isSaving || isCompleting || !isOngoing"
-          />
+          <textarea id="notes" v-model="form.notes" placeholder="Enter consultation notes, observations, etc." rows="5"
+            :disabled="isSaving || isCompleting || !isOngoing" />
 
           <label for="medication">Medication / Prescription</label>
-          <textarea
-            id="medication"
-            v-model="form.medication"
-            placeholder="Enter prescribed medication (leave empty if no medication)"
-            rows="4"
-            :disabled="isSaving || isCompleting || !isOngoing || form.noMedicationRequired"
-          />
+          <textarea id="medication" v-model="form.medication"
+            placeholder="Enter prescribed medication (leave empty if no medication)" rows="4"
+            :disabled="isSaving || isCompleting || !isOngoing || form.noMedicationRequired" />
           <label class="checkbox-label">
-            <input
-              v-model="form.noMedicationRequired"
-              type="checkbox"
-              :disabled="isSaving || isCompleting || !isOngoing"
-              @change="handleMedicationChoice"
-            />
+            <input v-model="form.noMedicationRequired" type="checkbox"
+              :disabled="isSaving || isCompleting || !isOngoing" @change="handleMedicationChoice" />
             No medication required
           </label>
           <p class="helper-text">
-            If medication is prescribed, the patient will be routed to medicine collection after consultation completion.
+            If medication is prescribed, the patient will be routed to medicine collection after consultation
+            completion.
           </p>
 
           <p v-if="saveMessage" class="success-message" role="status">
@@ -84,21 +66,14 @@
           <p v-if="completionError" class="message error-message" role="alert">
             {{ completionError }}
           </p>
+
           <div class="action-row">
-            <button
-              class="save-button"
-              type="button"
-              :disabled="isSaving || isCompleting || !isOngoing"
-              @click="handleSave"
-            >
+            <button class="save-button" type="button" :disabled="isSaving || isCompleting || !isOngoing"
+              @click="handleSave">
               {{ isSaving ? "Saving..." : "Save" }}
             </button>
-            <button
-              class="complete-button"
-              type="button"
-              :disabled="isSaving || isCompleting || !isOngoing"
-              @click="handleComplete"
-            >
+            <button class="complete-button" type="button" :disabled="isSaving || isCompleting || !isOngoing"
+              @click="handleComplete">
               {{ isCompleting ? "Completing..." : "Complete Consultation" }}
             </button>
           </div>
@@ -109,6 +84,7 @@
 </template>
 
 <script setup>
+import DoctorHeader from "@/components/common/DoctorHeader.vue";
 import {
   computed,
   defineComponent,
@@ -236,7 +212,7 @@ async function handleSave() {
     saveError.value = error.code === "permission-denied"
       ? "You do not have permission to save this consultation."
       : error.message
-        || "Unable to save consultation details. Your changes are still in the form.";
+      || "Unable to save consultation details. Your changes are still in the form.";
   } finally {
     isSaving.value = false;
   }
@@ -278,7 +254,7 @@ async function handleComplete() {
     completionError.value = error.code === "permission-denied"
       ? "You do not have permission to complete this consultation."
       : error.message
-        || "Unable to complete consultation. Your changes are still in the form.";
+      || "Unable to complete consultation. Your changes are still in the form.";
   } finally {
     isCompleting.value = false;
   }
@@ -320,48 +296,254 @@ function formatDate(value) {
   return Number.isNaN(date.getTime())
     ? "Date pending"
     : new Intl.DateTimeFormat("en-SG", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
 }
 </script>
 
 <style scoped>
-.doctor-shell { min-height: 100vh; }
-.doctor-nav { align-items: center; background: var(--color-surface); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; min-height: 88px; padding: 8px max(24px, calc((100vw - 1280px) / 2)); }
-.doctor-brand, .dashboard-link, .logout-button { align-items: center; display: inline-flex; text-decoration: none; }
-.doctor-brand { color: #141d35; gap: 12px; }
-.doctor-brand strong, .doctor-brand small { display: block; }
-.doctor-brand strong { font-size: 24px; }
-.doctor-brand small { color: var(--color-primary-dark); font-size: 13px; letter-spacing: .06em; }
-.brand-mark { align-items: center; background: var(--color-primary-dark); border-radius: 12px; color: white; display: inline-flex; font-size: 27px; height: 52px; justify-content: center; width: 52px; }
-.dashboard-link { background: var(--color-primary-soft); border-radius: 14px; color: var(--color-primary-dark); font-size: 18px; font-weight: 600; gap: 10px; padding: 14px 20px; }
-.doctor-account { align-items: center; display: flex; gap: 30px; }
-.logout-button { background: transparent; color: #53647d; gap: 10px; padding: 8px 0; }
-.consultation-page { margin: 0 auto; max-width: 1120px; padding: 38px 24px 70px; }
-.back-button { background: transparent; color: var(--color-primary-dark); padding: 0; }
-.back-button:hover { background: transparent; text-decoration: underline; }
-.consultation-header { align-items: center; background: #effcf9; border: 2px solid #b8f1e7; border-radius: 18px; display: flex; justify-content: space-between; margin: 34px 0 24px; padding: 20px; }
-.patient-banner { align-items: center; display: flex; gap: 16px; }
-.queue-number { align-items: center; background: #347e76; border-radius: 10px; color: white; display: flex; font-size: 18px; font-weight: 700; height: 62px; justify-content: center; width: 62px; }
-.consultation-header h1 { color: #141d35; font-size: 25px; margin: 0 0 5px; }
-.patient-banner p { color: #53647d; margin: 0; }
-.status-badge { background: #c6f7ef; border-radius: 8px; color: var(--color-primary-dark); display: inline-block; font-size: 14px; font-weight: 700; padding: 8px 14px; }
-.form-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 18px; margin-top: 18px; padding: 30px 34px; }
-.form-card > label:not(.checkbox-label) { color: #27344b; display: block; font-size: 17px; font-weight: 700; margin: 8px 0 10px; }
-.form-card > label span { color: #b42318; }
-textarea { border: 1px solid #d5dfe8; border-radius: 8px; box-sizing: border-box; color: #27344b; display: block; font: inherit; margin-bottom: 22px; padding: 14px; resize: vertical; width: 100%; }
-textarea:focus { border-color: var(--color-primary-dark); outline: 2px solid #c6f7ef; }
-.checkbox-label { align-items: center; color: #53647d; display: flex; gap: 9px; margin: -8px 0 12px; }
-.checkbox-label input { accent-color: var(--color-primary-dark); height: 16px; width: 16px; }
-.helper-text { color: #8a9ab2; font-size: 14px; margin: 0 0 26px; }
-.action-row { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
-.save-button, .complete-button { border-radius: 8px; min-height: 48px; }
-.save-button { background: white; border: 1px solid #d5dfe8; color: #27344b; }
-.save-button:hover:not(:disabled) { background: #f5faf9; }
-.complete-button { background: var(--color-primary-dark); color: white; }
-.success-message { color: #18794e; font-size: 15px; margin: 0 0 16px; }
-.message { color: var(--color-text-muted); font-size: 16px; }
-.error-message { color: #b42318; }
-@media (max-width: 700px) { .doctor-nav, .consultation-header { align-items: flex-start; flex-direction: column; gap: 18px; } .dashboard-link { display: none; } .doctor-account { font-size: 14px; gap: 12px; } .form-card { padding: 24px 18px; } .action-row { grid-template-columns: 1fr; } }
+.doctor-shell {
+  min-height: 100vh;
+}
+
+.consultation-page {
+  margin: 0 auto;
+  max-width: 920px;
+  padding: 28px 24px 64px;
+}
+
+.back-button {
+  background: transparent;
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.back-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-primary-deep, #0b5d5a);
+  text-decoration: underline;
+}
+
+.consultation-header {
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary-dark);
+  border-radius: var(--radius-card, 8px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 24px 0 16px;
+  padding: 20px 24px;
+}
+
+.patient-banner {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+
+.queue-number {
+  align-items: center;
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-control, 6px);
+  color: var(--color-primary-dark);
+  display: flex;
+  flex-shrink: 0;
+  font-size: 16px;
+  font-weight: 700;
+  height: 52px;
+  justify-content: center;
+  width: 52px;
+}
+
+.consultation-header h1 {
+  color: var(--color-text);
+  font-size: 23px;
+  line-height: 1.3;
+  margin: 0 0 5px;
+  overflow-wrap: anywhere;
+}
+
+.patient-banner p {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.status-badge {
+  background: var(--color-info-soft, #eff6ff);
+  border-radius: var(--radius-badge, 4px);
+  color: var(--color-info, #1d4ed8);
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 9px;
+}
+
+.status-badge.completed {
+  background: var(--color-success-soft, #ecfdf5);
+  color: var(--color-success, #166534);
+}
+
+.form-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card, 8px);
+  padding: 28px 30px;
+}
+
+.form-card>label:not(.checkbox-label) {
+  color: var(--color-text);
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.form-card>label span {
+  color: var(--color-danger, #b42318);
+}
+
+textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control, 6px);
+  color: var(--color-text);
+  display: block;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 22px;
+  padding: 12px 14px;
+  resize: vertical;
+  width: 100%;
+}
+
+textarea::placeholder {
+  color: #6b7b89;
+}
+
+textarea:focus-visible {
+  border-color: var(--color-primary-dark);
+}
+
+textarea:disabled {
+  background: var(--color-background);
+  cursor: not-allowed;
+}
+
+.checkbox-label {
+  align-items: center;
+  color: var(--color-text);
+  display: flex;
+  font-size: 14px;
+  gap: 9px;
+  margin: -6px 0 12px;
+}
+
+.checkbox-label input {
+  accent-color: var(--color-primary-dark);
+  height: 16px;
+  width: 16px;
+}
+
+.helper-text {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+.action-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.save-button,
+.complete-button {
+  border-radius: var(--radius-control, 6px);
+  font-size: 14px;
+  min-height: 44px;
+  padding: 11px 18px;
+}
+
+.save-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  min-width: 116px;
+}
+
+.save-button:hover:not(:disabled) {
+  background: var(--color-background);
+  color: var(--color-primary-dark);
+}
+
+.complete-button {
+  background: var(--color-primary-dark);
+  color: white;
+  min-width: 200px;
+}
+
+.complete-button:hover:not(:disabled) {
+  background: var(--color-primary-deep, #0b5d5a);
+}
+
+.save-button:disabled,
+.complete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.success-message {
+  color: var(--color-success, #166534);
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.message {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.error-message {
+  color: var(--color-danger, #b42318);
+}
+
+@media (max-width: 700px) {
+  .consultation-page {
+    padding: 24px 16px 48px;
+  }
+
+  .consultation-header {
+    align-items: flex-start;
+    padding: 18px;
+  }
+
+  .form-card {
+    padding: 20px 18px;
+  }
+
+  .action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .save-button,
+  .complete-button {
+    width: 100%;
+  }
+}
 </style>

@@ -91,8 +91,8 @@
         <!-- regular appointment details -->
         <div v-else>
           <div class="detail-schedule">
-            <p>🗓 {{ formatDate(selectedAppointment.date) }}</p>
-            <p>⏲ {{ selectedAppointment.time || 'Time unavailable' }}</p>
+            <p>Date: {{ formatDate(selectedAppointment.date) }}</p>
+            <p>Time: {{ selectedAppointment.time || 'Time unavailable' }}</p>
           </div>
 
           <!-- 5A separate reschedule and cancel actions -->
@@ -672,98 +672,92 @@ export default {
 
 <style scoped>
 .history-page {
-  max-width: 1100px;
+  max-width: 1050px;
 }
 
 .eyebrow {
-  color: var(--color-primary);
-  font-size: 12px;
+  color: var(--color-primary-dark);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  margin: 0 0 8px;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
   text-transform: uppercase;
 }
 
 .appointment-tabs {
-  background: #eef3f4;
-  border-radius: 10px;
+  border-bottom: 1px solid var(--color-border);
   display: flex;
-  gap: 4px;
-  margin: 24px 0;
-  max-width: 570px;
-  padding: 4px;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 24px 0 20px;
 }
 
 .appointment-tab {
   background: transparent;
-  border-radius: 7px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   color: var(--color-text-muted);
-  flex: 1;
-  font-size: 13px;
-  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px 2px;
 }
 
-.appointment-tab:hover {
+.appointment-tab:hover:not(:disabled) {
   background: transparent;
   color: var(--color-primary-dark);
 }
 
 .appointment-tab.active {
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  border-bottom-color: var(--color-primary-dark);
   color: var(--color-primary-dark);
 }
 
 .history-grid {
+  align-items: stretch;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
-  gap: 16px;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .history-message {
   color: var(--color-text-muted);
   font-size: 14px;
   line-height: 1.6;
-  padding: 36px 24px;
+  padding: 32px 20px;
   text-align: center;
 }
 
 .history-message h2 {
   color: var(--color-text);
-  font-size: 16px;
-  margin-bottom: 8px;
+  font-size: 17px;
+  margin: 0 0 8px;
 }
 
 /* appointment details view */
 .appointment-detail-view {
-  max-width: 560px;
+  margin: 0 auto;
+  max-width: 640px;
 }
 
 .back-button {
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 14px;
+  background: transparent;
+  border: 0;
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 600;
   margin-bottom: 20px;
-  padding: 0;
+  padding: 4px 0;
 }
 
-.back-button:hover {
-  color: var(--color-primary);
-}
-
-.back-button:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 4px;
+.back-button:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
 }
 
 .detail-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
   color: var(--color-text);
   padding: 24px;
 }
@@ -773,11 +767,11 @@ export default {
 }
 
 .status-badge {
+  border-radius: var(--radius-badge);
   display: inline-block;
-  border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 5px 9px;
 }
 
 .status-booked {
@@ -786,38 +780,40 @@ export default {
 }
 
 .status-completed {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-dark);
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .status-cancelled {
-  background: #f0f3f7;
-  color: #536078;
+  background: #eef2f4;
+  color: var(--color-text-muted);
 }
 
 .detail-doctor {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 21px;
+  font-weight: 650;
   margin: 16px 0 6px;
   overflow-wrap: anywhere;
 }
 
 .detail-reason {
-  color: #5d6d83;
+  color: var(--color-text-muted);
   font-size: 14px;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
 .detail-schedule {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
-  color: #5d6d83;
   font-size: 13px;
-  margin-top: 24px;
+  gap: 20px;
+  margin-top: 20px;
+  padding-top: 16px;
 }
 
-/* 5A appointment actions */
 .action-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -825,46 +821,62 @@ export default {
   margin-top: 24px;
 }
 
-.action-buttons button {
-  border-radius: 5px;
-  padding: 9px 14px;
+.action-buttons button,
+.cancel-dialog-actions button {
+  border-radius: var(--radius-control);
   font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 9px 14px;
 }
 
 .button-primary {
-  background: var(--color-primary);
+  background: var(--color-primary-dark);
+  border: 1px solid var(--color-primary-dark);
   color: white;
-  border: 1px solid var(--color-primary);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--color-primary-deep);
 }
 
 .button-secondary {
   background: white;
-  color: var(--color-text);
   border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.button-secondary:hover:not(:disabled) {
+  background: var(--color-background);
 }
 
 .button-danger {
   background: white;
-  color: #d83b3b;
-  border: 1px solid #f2c6c6;
+  border: 1px solid #efc7c4;
+  color: var(--color-danger);
 }
 
-.action-buttons button:disabled {
-  opacity: 0.5;
+.button-danger:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+}
+
+.action-buttons button:disabled,
+.cancel-dialog-actions button:disabled {
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
-.action-note {
-  margin-top: 24px !important;
+.detail-card .action-note {
   color: var(--color-text-muted);
   font-size: 13px;
+  margin-top: 20px;
 }
 
 /* 5A Edit form */
 .edit-form {
+  border-top: 1px solid var(--color-border);
   margin-top: 24px;
+  padding-top: 22px;
 }
 
 .form-row {
@@ -878,47 +890,49 @@ export default {
 }
 
 .form-field label {
-  display: block;
   color: var(--color-text);
-  font-size: 13px;
+  display: block;
+  font-size: 14px;
   font-weight: 600;
   margin-bottom: 8px;
 }
 
 .form-field input,
 .form-field select {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 5px;
   background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   color: var(--color-text);
+  font: inherit;
   font-size: 14px;
+  min-height: 44px;
+  padding: 10px 12px;
+  width: 100%;
 }
 
-.form-field input:focus,
-.form-field select:focus {
-  outline: 2px solid var(--color-primary);
+.form-field input:focus-visible,
+.form-field select:focus-visible {
+  border-color: var(--color-primary-dark);
 }
 
-.edit-message,
-.edit-error,
-.edit-success {
+.detail-card .edit-message,
+.detail-card .edit-error,
+.detail-card .edit-success {
   font-size: 13px;
-  margin-top: 12px !important;
+  line-height: 1.5;
+  margin-top: 12px;
 }
 
-.edit-message {
+.detail-card .edit-message {
   color: var(--color-text-muted);
 }
 
-.edit-error {
-  color: #b42318;
+.detail-card .edit-error {
+  color: var(--color-danger);
 }
 
-.edit-success {
-  color: var(--color-primary-dark);
+.detail-card .edit-success {
+  color: var(--color-success);
 }
 
 /* 7C: consultation details */
@@ -929,104 +943,101 @@ export default {
 }
 
 .consultation-details h3 {
-  font-size: 15px;
+  font-size: 17px;
   margin: 0 0 16px;
 }
 
-.consultation-details p {
-  color: #5d6d83;
-  font-size: 13px;
+.detail-card .consultation-details p {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
   margin-bottom: 12px;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .consultation-details strong {
   color: var(--color-text);
 }
 
-@media (max-width: 900px) {
-  .appointment-tabs {
-    max-width: none;
-  }
-
-  .history-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 600px) {
-  .history-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-row {
-    flex-direction: column;
-  }
-}
-
 /* 5C cancellation confirmation popup */
 .cancel-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
+  align-items: flex-start;
+  background: rgb(31 41 55 / 40%);
   display: flex;
+  inset: 0;
   justify-content: center;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.4);
-  padding: 20px;
+  overflow-y: auto;
+  padding: clamp(24px, 10vh, 96px) 16px 24px;
+  position: fixed;
+  z-index: 1000;
 }
 
 .cancel-dialog {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 480px;
-  border-radius: var(--radius-card);
   background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-overlay);
+  max-height: calc(100dvh - 48px);
+  max-width: 480px;
+  overflow-y: auto;
   padding: 24px;
+  width: 100%;
 }
 
 .cancel-dialog h2 {
   color: var(--color-text);
-  font-size: 18px;
+  font-size: 20px;
   margin: 0 0 12px;
 }
 
 .cancel-dialog p {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   margin: 0;
 }
 
 .cancel-dialog .edit-error {
-  color: #b42318;
+  color: var(--color-danger);
+  margin-top: 12px;
 }
 
 .cancel-dialog-actions {
   display: flex;
-  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
   margin-top: 24px;
 }
 
-.cancel-dialog-actions button {
-  border-radius: 5px;
-  padding: 9px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
 .cancel-dialog-actions .button-danger {
-  background: #d83b3b;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
   color: white;
-  border: 1px solid #d83b3b;
 }
 
-.cancel-dialog-actions button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.cancel-dialog-actions .button-danger:hover:not(:disabled) {
+  background: #912018;
+}
+
+@media (max-width: 700px) {
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .appointment-tabs {
+    gap: 14px;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  .detail-card {
+    padding: 20px 16px;
+  }
 }
 </style>

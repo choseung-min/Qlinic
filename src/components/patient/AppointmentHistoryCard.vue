@@ -39,8 +39,8 @@
     </p>
 
     <div class="appointment-schedule">
-      <p>🗓 {{ formatDate(appointment.date) }}</p>
-      <p>⏲ {{ appointment.time || 'Time unavailable' }}</p>
+      <p>Date: {{ formatDate(appointment.date) }}</p>
+      <p>Time: {{ appointment.time || 'Time unavailable' }}</p>
     </div>
   </div>
 </template>
@@ -80,27 +80,26 @@ export default {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
   color: var(--color-text);
+  cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 20px;
-  height: 100%;
-  cursor: pointer;
-  text-align: left;
   font-size: 14px;
+  gap: 10px;
+  height: 100%;
   line-height: 1.5;
+  padding: 20px;
+  text-align: left;
+  transition: border-color 0.2s ease;
 }
 
 .history-card:hover {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .history-card:focus-visible {
-  outline: 3px solid var(--color-primary);
-  outline-offset: 4px;
+  outline: 2px solid var(--color-primary-dark);
+  outline-offset: 3px;
 }
 
 .history-card p {
@@ -108,17 +107,17 @@ export default {
 }
 
 .card-topline {
+  align-items: center;
   display: flex;
   justify-content: space-between;
-  align-items: center;
   margin-bottom: 2px;
 }
 
 .status-badge {
-  border-radius: 4px;
-  font-size: 11px;
+  border-radius: var(--radius-badge);
+  font-size: 12px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 5px 9px;
 }
 
 .status-booked {
@@ -127,22 +126,23 @@ export default {
 }
 
 .status-completed {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-dark);
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .status-cancelled {
-  background: #f0f3f7;
-  color: #536078;
+  background: #eef2f4;
+  color: var(--color-text-muted);
 }
 
 .chevron {
   color: var(--color-text-muted);
-  font-size: 24px;
+  font-size: 19px;
+  line-height: 1;
 }
 
 .doctor-name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -153,15 +153,16 @@ export default {
 
 .visit-reason,
 .appointment-schedule {
-  color: #5d6d83;
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
 .appointment-schedule {
+  border-top: 1px solid var(--color-border);
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px 20px;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 12px;
 }
 </style>

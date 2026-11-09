@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="reminder-banner" role="status">
-    <span class="reminder-icon" aria-hidden="true">🔔</span>
+    <span class="reminder-icon" aria-hidden="true">ⓘ</span>
     <span class="reminder-text">{{ message }}</span>
     <button class="dismiss-button" type="button" aria-label="Dismiss reminder" @click="visible = false">
       ✕
@@ -22,42 +22,42 @@ const visible = ref(true);
 .reminder-banner {
   align-items: center;
   background: var(--color-primary-soft);
-  border: 1px solid var(--color-primary);
-  border-left: 5px solid var(--color-primary);
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgb(31 41 55 / 8%);
+  border: 1px solid #c4e7e2;
+  border-left: 3px solid var(--color-primary-dark);
+  border-radius: var(--radius-card);
   color: var(--color-text);
   display: flex;
-  font-size: 15px;
+  font-size: 14px;
   gap: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
   margin: 16px auto;
-  max-width: none;
-  padding: 14px 16px;
-  width: auto;
+  padding: 12px 14px;
+  width: 100%;
 }
 
 .reminder-icon {
-  font-size: 20px;
+  color: var(--color-primary-dark);
+  font-size: 19px;
+  font-weight: 600;
 }
 
 .reminder-text {
   flex: 1;
-  font-weight: 500;
+  min-width: 0;
 }
 
 .dismiss-button {
   background: transparent;
-  border: none;
-  border-radius: 6px;
+  border: 0;
+  border-radius: var(--radius-control);
   color: var(--color-text-muted);
-  cursor: pointer;
+  flex-shrink: 0;
   font-size: 16px;
-  padding: 4px 8px;
+  padding: 5px 8px;
 }
 
-.dismiss-button:hover {
-  background: var(--color-surface);
+.dismiss-button:hover:not(:disabled) {
+  background: #d4eee9;
   color: var(--color-text);
 }
 </style>

@@ -13,25 +13,16 @@
         <label for="patient-id">
           Patient ID <span class="optional-label">(optional)</span>
         </label>
-        <input
-          id="patient-id"
-          v-model.trim="patientId"
-          type="text"
-          placeholder="Leave blank for a patient without an account"
-        />
+        <input id="patient-id" v-model.trim="patientId" type="text"
+          placeholder="Leave blank for a patient without an account" />
         <p class="field-help">
           A patient ID links this visit to the patient's account. A name is enough
-          for patients without one.
+          for patients without an account.
         </p>
 
         <label for="reason">Reason for visit</label>
-        <textarea
-          id="reason"
-          v-model.trim="reasonForVisit"
-          required
-          rows="3"
-          placeholder="Briefly describe the reason for the visit"
-        ></textarea>
+        <textarea id="reason" v-model.trim="reasonForVisit" required rows="3"
+          placeholder="Briefly describe the reason for the visit"></textarea>
 
         <label for="doctor">Assign doctor</label>
         <select id="doctor" v-model="selectedDoctorId" :disabled="doctorsLoading">
@@ -128,13 +119,13 @@ async function handleSubmit() {
         ? "No active doctor is available right now."
         : error.code === "doctor-unavailable"
           ? "That doctor just became unavailable. Please choose another doctor."
-        : error.code === "no-remaining-time-slots"
-          ? "Walk-in registration is closed because there are no remaining clinic slots today."
-        : error.code === "already-in-queue"
-          ? "This patient is already in today's queue."
-        : error.code === "permission-denied"
-          ? "You do not have permission to register a walk-in patient."
-          : "Unable to register the walk-in patient. Please try again.";
+          : error.code === "no-remaining-time-slots"
+            ? "Walk-in registration is closed because there are no remaining clinic slots today."
+            : error.code === "already-in-queue"
+              ? "This patient is already in today's queue."
+              : error.code === "permission-denied"
+                ? "You do not have permission to register a walk-in patient."
+                : "Unable to register the walk-in patient. Please try again.";
     // queue lengths or availability may have changed since the page loaded
     if (error.code === "doctor-unavailable") {
       await loadDoctors();
@@ -148,7 +139,7 @@ async function handleSubmit() {
 
 <style scoped>
 .registration-card {
-  max-width: 560px;
+  max-width: var(--width-form, 640px);
 }
 
 form {
@@ -158,55 +149,90 @@ form {
 
 label {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
-input,
-select,
-textarea {
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
-  color: var(--color-text);
-  font: inherit;
-  padding: 11px 12px;
-}
-
-textarea {
-  resize: vertical;
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary-soft);
-}
-
-.optional-label,
-.field-help {
+.optional-label {
   color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 400;
 }
 
+input,
+select,
+textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control, 6px);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  padding: 11px 12px;
+  width: 100%;
+}
+
+textarea {
+  line-height: 1.5;
+  resize: vertical;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-primary-dark);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--color-background);
+  color: var(--color-text-muted);
+}
+
 .field-help {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
   margin: -4px 0 2px;
 }
 
-.error-message {
-  color: #b42318;
+.error-message,
+.success-message {
   font-size: 13px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
+.error-message {
+  color: var(--color-danger);
 }
 
 .success-message {
-  color: #067647;
-  font-size: 13px;
+  color: var(--color-success);
+}
+
+form>button[type="submit"] {
+  justify-self: start;
+  margin-top: 14px;
+  min-height: 44px;
+  padding: 11px 18px;
 }
 
 button:disabled {
-  cursor: wait;
-  opacity: 0.65;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 600px) {
+  .registration-card {
+    padding: 20px 16px;
+  }
+
+  form>button[type="submit"] {
+    width: 100%;
+  }
 }
 </style>

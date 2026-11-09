@@ -125,45 +125,58 @@ async function handleLogout() {
 
 <style scoped>
 #nav {
+  gap: 12px 20px;
   justify-content: space-between;
 }
 
-.brand {
+/* keep the brand separate from navigation link styling */
+#nav .brand {
   align-items: center;
-  color: var(--color-primary-dark) !important;
+  color: var(--color-primary-dark);
   display: inline-flex;
-  font-size: 18px !important;
-  font-weight: 800 !important;
+  font-size: 18px;
+  font-weight: 800;
   gap: 8px;
-  padding-left: 8px !important;
+  padding: 4px 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#nav .brand:hover,
+#nav .brand.router-link-exact-active {
+  background: transparent;
+  color: var(--color-primary-dark);
 }
 
 .brand-mark {
   align-items: center;
   background: var(--color-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-control, 6px);
   color: white;
   display: inline-flex;
-  font-size: 12px;
-  height: 24px;
+  font-size: 13px;
+  height: 26px;
   justify-content: center;
-  width: 24px;
+  width: 26px;
 }
 
 .patient-nav,
 .account-nav {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
 .account-nav {
+  justify-content: flex-end;
   margin-left: auto;
 }
 
 .contact-button {
   background: transparent;
   color: var(--color-text-muted);
+  font-size: 13px;
   padding: 9px 13px;
 }
 
@@ -174,11 +187,12 @@ async function handleLogout() {
 
 .contact-backdrop {
   align-items: flex-start;
-  background: rgb(31 41 55 / 25%);
+  background: rgb(31 41 55 / 35%);
   display: flex;
   inset: 0;
   justify-content: center;
-  padding-top: 96px;
+  overflow-y: auto;
+  padding: clamp(24px, 10vh, 96px) 16px 24px;
   position: fixed;
   z-index: 10;
 }
@@ -186,12 +200,14 @@ async function handleLogout() {
 .contact-dialog {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  box-shadow: 0 12px 32px rgb(31 41 55 / 18%);
+  border-radius: var(--radius-dialog, 12px);
+  box-shadow: var(--shadow-overlay, 0 16px 40px rgb(31 41 55 / 14%));
+  max-height: calc(100dvh - 48px);
   max-width: 360px;
+  overflow-y: auto;
   padding: 24px;
   position: relative;
-  width: calc(100% - 32px);
+  width: 100%;
 }
 
 .contact-dialog h2 {
@@ -214,7 +230,7 @@ async function handleLogout() {
 }
 
 .contact-detail > span {
-  color: var(--color-primary);
+  color: var(--color-primary-dark);
   font-size: 20px;
   line-height: 1;
 }
@@ -233,15 +249,26 @@ async function handleLogout() {
   color: var(--color-text);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   #nav {
     align-items: flex-start;
     flex-wrap: wrap;
   }
 
+  .patient-nav,
+  .account-nav {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .account-nav {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
   .patient-nav {
     order: 3;
-    width: 100%;
   }
 }
 </style>
