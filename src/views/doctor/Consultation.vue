@@ -6,14 +6,18 @@
       <button class="back-button" type="button" @click="goToPatient">
         ← Back to Patient Information
       </button>
+
       <p v-if="isLoading" class="message">Loading consultation...</p>
       <p v-else-if="errorMessage" class="message error-message" role="alert">
         {{ errorMessage }}
       </p>
+
       <template v-else>
         <header class="consultation-header">
           <div class="patient-banner">
-            <div class="queue-number">{{ formatQueueNumber(visit.queueNumber) }}</div>
+            <div class="queue-number">
+              {{ formatQueueNumber(visit.queueNumber) }}
+            </div>
             <div>
               <h1>{{ patient.displayName || "Patient" }}</h1>
               <p>
@@ -23,10 +27,15 @@
               </p>
             </div>
           </div>
-          <span class="status-badge">{{ consultation.status }}</span>
+          <span class="status-badge" :class="String(consultation.status || '').toLowerCase().replaceAll(' ', '-')">
+            {{ consultation.status }}
+          </span>
         </header>
+
         <section class="form-card">
-          <label for="diagnosis">Diagnosis <span aria-hidden="true">*</span></label>
+          <label for="diagnosis">
+            Diagnosis <span aria-hidden="true">*</span>
+          </label>
           <textarea id="diagnosis" v-model="form.diagnosis" placeholder="Enter diagnosis" rows="4"
             :disabled="isSaving || isCompleting || !isOngoing" />
 
@@ -57,6 +66,7 @@
           <p v-if="completionError" class="message error-message" role="alert">
             {{ completionError }}
           </p>
+
           <div class="action-row">
             <button class="save-button" type="button" :disabled="isSaving || isCompleting || !isOngoing"
               @click="handleSave">
@@ -299,116 +309,143 @@ function formatDate(value) {
 
 .consultation-page {
   margin: 0 auto;
-  max-width: 1120px;
-  padding: 38px 24px 70px;
+  max-width: 920px;
+  padding: 28px 24px 64px;
 }
 
 .back-button {
   background: transparent;
   color: var(--color-primary-dark);
-  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
 }
 
-.back-button:hover {
+.back-button:hover:not(:disabled) {
   background: transparent;
+  color: var(--color-primary-deep, #0b5d5a);
   text-decoration: underline;
 }
 
 .consultation-header {
   align-items: center;
-  background: #effcf9;
-  border: 2px solid #b8f1e7;
-  border-radius: 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary-dark);
+  border-radius: var(--radius-card, 8px);
   display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
   justify-content: space-between;
-  margin: 34px 0 24px;
-  padding: 20px;
+  margin: 24px 0 16px;
+  padding: 20px 24px;
 }
 
 .patient-banner {
   align-items: center;
   display: flex;
   gap: 16px;
+  min-width: 0;
 }
 
 .queue-number {
   align-items: center;
-  background: #347e76;
-  border-radius: 10px;
-  color: white;
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-control, 6px);
+  color: var(--color-primary-dark);
   display: flex;
-  font-size: 18px;
+  flex-shrink: 0;
+  font-size: 16px;
   font-weight: 700;
-  height: 62px;
+  height: 52px;
   justify-content: center;
-  width: 62px;
+  width: 52px;
 }
 
 .consultation-header h1 {
-  color: #141d35;
-  font-size: 25px;
+  color: var(--color-text);
+  font-size: 23px;
+  line-height: 1.3;
   margin: 0 0 5px;
+  overflow-wrap: anywhere;
 }
 
 .patient-banner p {
-  color: #53647d;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
   margin: 0;
 }
 
 .status-badge {
-  background: #c6f7ef;
-  border-radius: 8px;
-  color: var(--color-primary-dark);
+  background: var(--color-info-soft, #eff6ff);
+  border-radius: var(--radius-badge, 4px);
+  color: var(--color-info, #1d4ed8);
   display: inline-block;
-  font-size: 14px;
-  font-weight: 700;
-  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 9px;
+}
+
+.status-badge.completed {
+  background: var(--color-success-soft, #ecfdf5);
+  color: var(--color-success, #166534);
 }
 
 .form-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 18px;
-  margin-top: 18px;
-  padding: 30px 34px;
+  border-radius: var(--radius-card, 8px);
+  padding: 28px 30px;
 }
 
 .form-card>label:not(.checkbox-label) {
-  color: #27344b;
+  color: var(--color-text);
   display: block;
-  font-size: 17px;
-  font-weight: 700;
-  margin: 8px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px;
 }
 
 .form-card>label span {
-  color: #b42318;
+  color: var(--color-danger, #b42318);
 }
 
 textarea {
-  border: 1px solid #d5dfe8;
-  border-radius: 8px;
-  box-sizing: border-box;
-  color: #27344b;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control, 6px);
+  color: var(--color-text);
   display: block;
   font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
   margin-bottom: 22px;
-  padding: 14px;
+  padding: 12px 14px;
   resize: vertical;
   width: 100%;
 }
 
-textarea:focus {
+textarea::placeholder {
+  color: #6b7b89;
+}
+
+textarea:focus-visible {
   border-color: var(--color-primary-dark);
-  outline: 2px solid #c6f7ef;
+}
+
+textarea:disabled {
+  background: var(--color-background);
+  cursor: not-allowed;
 }
 
 .checkbox-label {
   align-items: center;
-  color: #53647d;
+  color: var(--color-text);
   display: flex;
+  font-size: 14px;
   gap: 9px;
-  margin: -8px 0 12px;
+  margin: -6px 0 12px;
 }
 
 .checkbox-label input {
@@ -418,66 +455,95 @@ textarea:focus {
 }
 
 .helper-text {
-  color: #8a9ab2;
-  font-size: 14px;
-  margin: 0 0 26px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 24px;
 }
 
 .action-row {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 
 .save-button,
 .complete-button {
-  border-radius: 8px;
-  min-height: 48px;
+  border-radius: var(--radius-control, 6px);
+  font-size: 14px;
+  min-height: 44px;
+  padding: 11px 18px;
 }
 
 .save-button {
-  background: white;
-  border: 1px solid #d5dfe8;
-  color: #27344b;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  min-width: 116px;
 }
 
 .save-button:hover:not(:disabled) {
-  background: #f5faf9;
+  background: var(--color-background);
+  color: var(--color-primary-dark);
 }
 
 .complete-button {
   background: var(--color-primary-dark);
   color: white;
+  min-width: 200px;
+}
+
+.complete-button:hover:not(:disabled) {
+  background: var(--color-primary-deep, #0b5d5a);
+}
+
+.save-button:disabled,
+.complete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .success-message {
-  color: #18794e;
-  font-size: 15px;
+  color: var(--color-success, #166534);
+  font-size: 14px;
   margin: 0 0 16px;
 }
 
 .message {
   color: var(--color-text-muted);
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .error-message {
-  color: #b42318;
+  color: var(--color-danger, #b42318);
 }
 
 @media (max-width: 700px) {
+  .consultation-page {
+    padding: 24px 16px 48px;
+  }
+
   .consultation-header {
     align-items: flex-start;
-    flex-direction: column;
-    gap: 18px;
+    padding: 18px;
   }
 
   .form-card {
-    padding: 24px 18px;
+    padding: 20px 18px;
   }
 
   .action-row {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .save-button,
+  .complete-button {
+    width: 100%;
   }
 }
 </style>
