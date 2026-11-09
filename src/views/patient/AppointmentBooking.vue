@@ -392,40 +392,43 @@ onUnmounted(() => {
 
 <style scoped>
 .booking-page {
-  max-width: 720px;
+  max-width: 760px;
 }
 
 .booking-header {
-  margin: 12px 0 20px;
+  margin: 0 auto 20px;
+  max-width: var(--width-form, 640px);
 }
 
 .eyebrow {
-  color: var(--color-primary);
-  font-size: 12px;
+  color: var(--color-primary-dark);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  margin: 0 0 8px;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
   text-transform: uppercase;
 }
 
 .booking-card {
-  max-width: 520px;
+  margin: 0 auto;
+  max-width: var(--width-form, 640px);
 }
 
 form,
 .field-group {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 form {
-  gap: 20px;
+  gap: 22px;
 }
 
 label,
 legend {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -434,27 +437,31 @@ input[type="date"],
 textarea {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  min-height: 44px;
   padding: 11px 12px;
   width: 100%;
 }
 
-select:focus,
-input:focus,
-textarea:focus {
-  border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary-soft);
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-primary-dark);
 }
 
 textarea {
-  min-height: 88px;
+  line-height: 1.5;
+  min-height: 96px;
   resize: vertical;
 }
 
 .time-fieldset {
   border: 0;
   margin: 0;
+  min-width: 0;
   padding: 0;
 }
 
@@ -462,62 +469,79 @@ textarea {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 8px;
 }
 
 .time-grid button {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  font-size: 13px;
+  min-height: 42px;
   padding: 10px 8px;
 }
 
-.time-grid button:hover,
-.time-grid button.selected {
+.time-grid button:hover:not(:disabled) {
   background: var(--color-primary-soft);
   border-color: var(--color-primary);
   color: var(--color-primary-dark);
 }
 
+.time-grid button.selected:not(:disabled) {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: white;
+}
+
 .time-grid button:disabled {
   background: var(--color-background);
   border-color: var(--color-border);
-  color: #a0aec0;
+  color: #64748b;
   cursor: not-allowed;
-  opacity: 1;
+  opacity: 0.65;
   text-decoration: line-through;
 }
 
 .confirm-button {
+  min-height: 44px;
   width: 100%;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .field-error {
-  color: #b42318;
+  color: var(--color-danger);
   font-size: 13px;
+  line-height: 1.5;
   margin: 0;
 }
 
 .status-message {
   color: var(--color-text-muted);
   font-size: 13px;
+  line-height: 1.5;
   margin: 0;
 }
 
 .success-message {
-  background: var(--color-primary-soft);
-  border-radius: 7px;
-  color: var(--color-primary-dark);
+  background: var(--color-success-soft);
+  border-radius: var(--radius-control);
+  color: var(--color-success);
   font-size: 13px;
+  line-height: 1.5;
   margin: 0;
   padding: 10px 12px;
 }
 
 @media (max-width: 480px) {
+  .booking-card {
+    padding: 20px 16px;
+  }
+
   .time-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
