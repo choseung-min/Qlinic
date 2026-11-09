@@ -1,27 +1,9 @@
 <template>
   <div class="doctor-shell">
-    <header class="doctor-nav">
-      <router-link class="doctor-brand" to="/doctor" aria-label="Qlinic doctor dashboard">
-        <span class="brand-mark" aria-hidden="true">♧</span>
-        <span>
-          <strong>Qlinic</strong>
-          <small>DOCTOR</small>
-        </span>
-      </router-link>
-
-      <router-link class="dashboard-link" to="/doctor">
-        <span aria-hidden="true">▦</span>
-        Dashboard
-      </router-link>
-
-      <div class="doctor-account">
-        <span>{{ doctor.name || user?.displayName || "Doctor" }}</span>
-        <button class="logout-button" type="button" @click="handleLogout">
-          <span aria-hidden="true">↪</span>
-          Log out
-        </button>
-      </div>
-    </header>
+    <DoctorHeader
+      :doctor-name="doctor.name || user?.displayName || 'Doctor'"
+      @logout="handleLogout"
+    />
 
     <main class="doctor-page">
       <p v-if="errorMessage" class="message error-message" role="alert">
@@ -130,6 +112,7 @@
 </template>
 
 <script setup>
+import DoctorHeader from "@/components/common/DoctorHeader.vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { auth } from "@/services/firebase";
@@ -360,93 +343,6 @@ function normalizeAvailability(status) {
 <style scoped>
 .doctor-shell {
   min-height: 100vh;
-}
-
-.doctor-nav {
-  align-items: center;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  min-height: 88px;
-  padding: 8px max(24px, calc((100vw - 1280px) / 2));
-}
-
-.doctor-brand,
-.dashboard-link,
-.logout-button {
-  align-items: center;
-  color: #53647d;
-  display: inline-flex;
-  text-decoration: none;
-}
-
-.doctor-brand {
-  color: #141d35;
-  gap: 12px;
-}
-
-.doctor-brand strong,
-.doctor-brand small {
-  display: block;
-}
-
-.doctor-brand strong {
-  font-size: 24px;
-}
-
-.doctor-brand small {
-  color: var(--color-primary-dark);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  margin-top: 2px;
-}
-
-.brand-mark {
-  align-items: center;
-  background: var(--color-primary-dark);
-  border-radius: 12px;
-  color: white;
-  display: inline-flex;
-  font-size: 27px;
-  height: 52px;
-  justify-content: center;
-  width: 52px;
-}
-
-.dashboard-link {
-  background: var(--color-primary-soft);
-  border-radius: 14px;
-  color: var(--color-primary-dark);
-  font-size: 23px;
-  font-weight: 600;
-  gap: 10px;
-  padding: 15px 22px;
-}
-
-.dashboard-link span {
-  font-size: 29px;
-  line-height: 0.7;
-}
-
-.doctor-account {
-  align-items: center;
-  display: flex;
-  font-size: 21px;
-  gap: 30px;
-}
-
-.logout-button {
-  background: transparent;
-  color: #53647d;
-  font-size: 17px;
-  gap: 12px;
-  padding: 8px 0;
-}
-
-.logout-button:hover {
-  background: transparent;
-  color: var(--color-primary-dark);
 }
 
 .doctor-page {
@@ -712,21 +608,11 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
-  .doctor-nav,
   .doctor-header,
   .next-patient-content,
   .patient-card {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .dashboard-link {
-    display: none;
-  }
-
-  .doctor-account {
-    font-size: 14px;
-    gap: 8px;
   }
 
   .doctor-page {

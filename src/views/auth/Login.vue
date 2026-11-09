@@ -213,6 +213,10 @@ function toggleMode() {
   width: 100%;
 }
 
+.auth-card .page-header {
+  margin-bottom: 24px;
+}
+
 form {
   display: grid;
   gap: 10px;
@@ -221,8 +225,12 @@ form {
 label,
 legend {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+}
+
+form label:not(:first-child) {
+  margin-top: 6px;
 }
 
 .optional-label {
@@ -238,23 +246,33 @@ input[type="text"],
 input[type="tel"],
 input[type="date"],
 select {
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control, 6px);
   color: var(--color-text);
   font: inherit;
+  min-height: 44px;
   padding: 11px 12px;
+  width: 100%;
 }
 
-input:focus,
-select:focus {
-  border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary-soft);
+input:focus-visible,
+select:focus-visible {
+  border-color: var(--color-primary-dark);
+  outline: 2px solid var(--color-primary-dark);
+  outline-offset: 1px;
 }
 
 .error-message {
-  color: #b42318;
+  color: var(--color-danger, #b42318);
   font-size: 13px;
   margin: 4px 0;
+}
+
+form button[type="submit"] {
+  min-height: 44px;
+  margin-top: 10px;
+  width: 100%;
 }
 
 button:disabled {
@@ -264,6 +282,13 @@ button:disabled {
 
 .mode-button {
   margin-top: 16px;
+  min-height: 44px;
   width: 100%;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 20px;
+  }
 }
 </style>

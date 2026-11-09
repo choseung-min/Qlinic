@@ -1,27 +1,6 @@
 <template>
   <div class="doctor-shell">
-    <header class="doctor-nav">
-      <router-link class="doctor-brand" to="/doctor" aria-label="Qlinic doctor dashboard">
-        <span class="brand-mark" aria-hidden="true">♧</span>
-        <span>
-          <strong>Qlinic</strong>
-          <small>DOCTOR</small>
-        </span>
-      </router-link>
-
-      <router-link class="dashboard-link" to="/doctor">
-        <span aria-hidden="true">▦</span>
-        Dashboard
-      </router-link>
-
-      <div class="doctor-account">
-        <span>{{ doctor.name || user?.displayName || "Doctor" }}</span>
-        <button class="logout-button" type="button" @click="handleLogout">
-          <span aria-hidden="true">↪</span>
-          Log out
-        </button>
-      </div>
-    </header>
+    <DoctorHeader :doctor-name="doctor.name || user?.displayName || 'Doctor'" @logout="handleLogout" />
 
     <main class="patient-page">
       <button class="back-button" type="button" @click="router.push({ name: 'DoctorMain' })">
@@ -70,8 +49,10 @@
           <h2 id="medical-profile-title">Medical Profile</h2>
           <div class="detail-grid">
             <DetailItem label="Allergies" :value="patient.allergies" fallback="Not recorded" />
-            <DetailItem label="Existing medical conditions" :value="patient.medicalConditions || patient.conditions" fallback="Not recorded" />
-            <DetailItem label="Current medications" :value="patient.currentMedications || patient.medications" fallback="Not recorded" />
+            <DetailItem label="Existing medical conditions" :value="patient.medicalConditions || patient.conditions"
+              fallback="Not recorded" />
+            <DetailItem label="Current medications" :value="patient.currentMedications || patient.medications"
+              fallback="Not recorded" />
           </div>
         </section>
 
@@ -87,7 +68,8 @@
           </p>
           <article v-for="consultation in consultations" :key="consultation.id" class="consultation-card">
             <div class="consultation-heading">
-              <h3>{{ formatDate(consultation.consultationDate || consultation.date || consultation.completedAt || consultation.createdAt) }}</h3>
+              <h3>{{ formatDate(consultation.consultationDate || consultation.date || consultation.completedAt ||
+                consultation.createdAt) }}</h3>
               <span class="status-badge">{{ consultation.status || "Completed" }}</span>
             </div>
             <div class="detail-grid">
@@ -99,12 +81,7 @@
           </article>
         </section>
 
-        <button
-          class="start-button"
-          type="button"
-          :disabled="isStartingConsultation"
-          @click="handleStartConsultation"
-        >
+        <button class="start-button" type="button" :disabled="isStartingConsultation" @click="handleStartConsultation">
           {{ isStartingConsultation ? "Starting..." : "Start Consultation" }}
         </button>
       </template>
@@ -113,6 +90,7 @@
 </template>
 
 <script setup>
+import DoctorHeader from "@/components/common/DoctorHeader.vue";
 import { defineComponent, h, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { auth } from "@/services/firebase";
@@ -245,87 +223,161 @@ function formatDate(value) {
   return Number.isNaN(date.getTime())
     ? "Date not recorded"
     : new Intl.DateTimeFormat("en-SG", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }).format(date);
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(date);
 }
 </script>
 
 <style scoped>
-.doctor-shell { min-height: 100vh; }
-.doctor-nav {
+.doctor-shell {
+  min-height: 100vh;
+}
+
+.patient-page {
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 38px 24px 70px;
+}
+
+.back-button {
+  background: transparent;
+  color: var(--color-primary-dark);
+  padding: 0;
+}
+
+.back-button:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.patient-header {
   align-items: center;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
   display: flex;
   justify-content: space-between;
-  min-height: 88px;
-  padding: 8px max(24px, calc((100vw - 1280px) / 2));
+  margin: 34px 0 24px;
 }
-.doctor-brand, .dashboard-link, .logout-button {
-  align-items: center;
-  display: inline-flex;
-  text-decoration: none;
-}
-.doctor-brand { color: #141d35; gap: 12px; }
-.doctor-brand strong, .doctor-brand small { display: block; }
-.doctor-brand strong { font-size: 24px; }
-.doctor-brand small { color: var(--color-primary-dark); font-size: 13px; letter-spacing: .06em; }
-.brand-mark {
-  align-items: center;
-  background: var(--color-primary-dark);
-  border-radius: 12px;
-  color: white;
-  display: inline-flex;
-  font-size: 27px;
-  height: 52px;
-  justify-content: center;
-  width: 52px;
-}
-.dashboard-link {
-  background: var(--color-primary-soft);
-  border-radius: 14px;
+
+.eyebrow {
   color: var(--color-primary-dark);
-  font-size: 18px;
-  font-weight: 600;
-  gap: 10px;
-  padding: 14px 20px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  margin: 0 0 8px;
 }
-.doctor-account { align-items: center; display: flex; gap: 30px; }
-.logout-button { background: transparent; color: #53647d; gap: 10px; padding: 8px 0; }
-.logout-button:hover { background: transparent; color: var(--color-primary-dark); }
-.patient-page { margin: 0 auto; max-width: 1120px; padding: 38px 24px 70px; }
-.back-button { background: transparent; color: var(--color-primary-dark); padding: 0; }
-.back-button:hover { background: transparent; text-decoration: underline; }
-.patient-header { align-items: center; display: flex; justify-content: space-between; margin: 34px 0 24px; }
-.eyebrow { color: var(--color-primary-dark); font-size: 13px; font-weight: 700; letter-spacing: .08em; margin: 0 0 8px; }
-.patient-header h1 { color: #141d35; font-size: 36px; margin: 0; }
-.status-badge { background: #c6f7ef; border-radius: 8px; color: var(--color-primary-dark); display: inline-block; font-size: 14px; font-weight: 700; padding: 8px 14px; }
-.info-card, .consultation-card {
+
+.patient-header h1 {
+  color: #141d35;
+  font-size: 36px;
+  margin: 0;
+}
+
+.status-badge {
+  background: #c6f7ef;
+  border-radius: 8px;
+  color: var(--color-primary-dark);
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.info-card,
+.consultation-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 18px;
   margin-top: 18px;
   padding: 28px;
 }
-.info-card h2, .section-heading h2 { color: #141d35; font-size: 24px; margin: 0 0 22px; }
-.detail-grid { display: grid; gap: 22px 40px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.detail-item { margin: 0; min-width: 0; }
-.detail-item :deep(dt) { color: #8a9ab2; font-size: 12px; font-weight: 700; letter-spacing: .06em; margin-bottom: 7px; text-transform: uppercase; }
-.detail-item :deep(dd) { color: #27344b; font-size: 17px; margin: 0; overflow-wrap: anywhere; }
-.consultations-section { margin-top: 38px; }
-.section-heading { align-items: center; display: flex; justify-content: space-between; }
-.consultation-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: 20px; }
-.consultation-heading h3 { color: #27344b; font-size: 19px; margin: 0; }
-.empty-state, .message { color: var(--color-text-muted); font-size: 16px; }
-.error-message { color: #b42318; }
-.start-button { display: block; margin: 30px 0 0 auto; }
-button:disabled { cursor: not-allowed; opacity: .65; }
+
+.info-card h2,
+.section-heading h2 {
+  color: #141d35;
+  font-size: 24px;
+  margin: 0 0 22px;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 22px 40px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-item {
+  margin: 0;
+  min-width: 0;
+}
+
+.detail-item :deep(dt) {
+  color: #8a9ab2;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.detail-item :deep(dd) {
+  color: #27344b;
+  font-size: 17px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.consultations-section {
+  margin-top: 38px;
+}
+
+.section-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.consultation-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.consultation-heading h3 {
+  color: #27344b;
+  font-size: 19px;
+  margin: 0;
+}
+
+.empty-state,
+.message {
+  color: var(--color-text-muted);
+  font-size: 16px;
+}
+
+.error-message {
+  color: #b42318;
+}
+
+.start-button {
+  display: block;
+  margin: 30px 0 0 auto;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .65;
+}
+
 @media (max-width: 700px) {
-  .doctor-nav, .patient-header { align-items: flex-start; flex-direction: column; gap: 18px; }
-  .dashboard-link { display: none; }
-  .doctor-account { font-size: 14px; gap: 12px; }
-  .detail-grid { grid-template-columns: 1fr; }
+  .patient-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
