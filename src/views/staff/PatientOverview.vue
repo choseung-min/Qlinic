@@ -12,8 +12,8 @@
 
             <!-- 5A patient name search -->
             <div class="search-box">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="11" cy="11" r="7"></circle>
                     <path d="M20 20l-4-4"></path>
                 </svg>
@@ -113,7 +113,8 @@
                             </td>
 
                             <td>
-                                <span v-if="visit.medicineStatus" class="status-badge medicine-badge">
+                                <span v-if="visit.medicineStatus" class="status-badge medicine-badge"
+                                    :class="'medicine-' + String(visit.medicineStatus).trim().toLowerCase().replaceAll(' ', '-')">
                                     {{ visit.medicineStatus }}
                                 </span>
                                 <span v-else>—</span>
@@ -442,10 +443,12 @@ export default {
 
 <style scoped>
 .patient-overview {
-    padding: 28px 32px;
-    color: #172b46;
-    background: #f7f9fb;
+    background: var(--color-background);
+    color: var(--color-text);
+    margin: 0 auto;
+    max-width: var(--width-content, 1150px);
     min-height: 100%;
+    padding: 32px 24px 64px;
 }
 
 .page-header {
@@ -453,85 +456,89 @@ export default {
 }
 
 .page-header h1 {
-    font-size: 26px;
+    color: var(--color-text);
+    font-size: var(--font-size-page-title, 28px);
     margin: 0 0 6px;
 }
 
 .page-header p {
-    color: #73829a;
+    color: var(--color-text-muted);
     font-size: 14px;
     margin: 0;
 }
 
 .overview-card {
-    background: white;
-    border: 1px solid #e8edf2;
-    border-radius: 12px;
-    padding: 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card, 8px);
+    padding: 20px;
 }
 
 .date-label {
-    color: #73829a;
+    color: var(--color-text-muted);
     font-size: 13px;
+    font-weight: 600;
     margin: 0 0 16px;
 }
 
 .search-box {
-    display: flex;
     align-items: center;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control, 6px);
+    display: flex;
     gap: 10px;
-    border: 1px solid #e8edf2;
-    border-radius: 6px;
+    margin-bottom: 12px;
+    min-height: 44px;
     padding: 10px 12px;
-    margin-bottom: 16px;
 }
 
 .search-icon {
-    width: 18px;
-    height: 18px;
+    color: var(--color-text-muted);
     flex-shrink: 0;
-    color: #75839a;
+    height: 18px;
+    width: 18px;
 }
 
 .search-box input {
-    width: 100%;
-    border: none;
-    outline: none;
-    color: #172b46;
     background: transparent;
-    font-size: 13px;
+    border: none;
+    color: var(--color-text);
+    font-size: 14px;
+    outline: none;
+    width: 100%;
 }
 
 .search-box input::placeholder {
-    color: #75839a;
+    color: var(--color-text-muted);
 }
 
 .search-box:focus-within {
-    border-color: #178b87;
+    border-color: var(--color-primary-dark);
+    box-shadow: 0 0 0 2px var(--color-primary-soft);
 }
 
 /* 5B filters */
 .filters-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     margin-bottom: 16px;
 }
 
 .filter-select {
-    width: 100%;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control, 6px);
+    color: var(--color-text);
+    font-size: 13px;
+    min-height: 42px;
     min-width: 0;
     padding: 10px 12px;
-    border: 1px solid #e8edf2;
-    border-radius: 6px;
-    background: white;
-    color: #172b46;
-    font-size: 13px;
+    width: 100%;
 }
 
-.filter-select:focus {
-    outline: 2px solid #178b87;
-    outline-offset: 1px;
+.filter-select:focus-visible {
+    border-color: var(--color-primary-dark);
 }
 
 .clear-filters-row {
@@ -541,15 +548,15 @@ export default {
 }
 
 .clear-filters-button {
-    border: none;
-    background: none;
-    color: #178b87;
-    cursor: pointer;
+    background: transparent;
+    border: 0;
+    color: var(--color-primary-dark);
     font-size: 13px;
-    padding: 2px;
+    padding: 3px 0;
 }
 
 .clear-filters-button:hover {
+    background: transparent;
     text-decoration: underline;
 }
 
@@ -559,26 +566,38 @@ export default {
 
 .patient-table {
     border-collapse: collapse;
-    width: 100%;
-    min-width: 700px;
+    min-width: 800px;
     text-align: left;
+    width: 100%;
 }
 
 .patient-table th {
-    background: #f7f9fb;
-    color: #75839a;
-    font-size: 11px;
-    padding: 14px 12px;
+    background: #f1f5f6;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 13px 12px;
+    text-align: left;
 }
 
 .patient-table td {
-    border-bottom: 1px solid #edf0f4;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
     font-size: 13px;
+    line-height: 1.5;
     padding: 14px 12px;
+}
+
+.patient-table tbody tr:hover {
+    background: #f8fbfb;
 }
 
 .patient-table tbody tr:last-child td {
     border-bottom: none;
+}
+
+.queue-number {
+    font-variant-numeric: tabular-nums;
 }
 
 .queue-number,
@@ -587,46 +606,71 @@ export default {
 }
 
 .status-badge {
-    border-radius: 5px;
+    border-radius: var(--radius-badge, 4px);
     display: inline-block;
     font-size: 11px;
     font-weight: 600;
+    line-height: 1.4;
     padding: 5px 9px;
     white-space: nowrap;
 }
 
 .status-waiting,
-.status-completed,
-.medicine-badge {
-    background: #dff6f2;
-    color: #117c72;
+.status-other {
+    background: #eef2f4;
+    color: var(--color-text-muted);
 }
 
 .status-consultation {
-    background: #e5edff;
-    color: #3a62a0;
+    background: var(--color-info-soft);
+    color: var(--color-info);
 }
 
 .status-medicine {
-    background: #fff4d8;
-    color: #906400;
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
 }
 
-.status-absent,
-.status-other {
-    background: #edf0f4;
-    color: #637083;
+.status-completed {
+    background: var(--color-success-soft);
+    color: var(--color-success);
+}
+
+.status-absent {
+    background: #eef2f4;
+    color: var(--color-text-muted);
+}
+
+.medicine-badge {
+    background: #eef2f4;
+    color: var(--color-text-muted);
+}
+
+.medicine-preparing {
+    background: var(--color-warning-soft);
+    color: var(--color-warning);
+}
+
+.medicine-ready,
+.medicine-ready-for-collection {
+    background: var(--color-info-soft);
+    color: var(--color-info);
+}
+
+.medicine-collected {
+    background: var(--color-success-soft);
+    color: var(--color-success);
 }
 
 .table-message {
-    padding: 32px 12px;
-    color: #73829a;
+    color: var(--color-text-muted);
     font-size: 14px;
+    padding: 40px 12px;
     text-align: center;
 }
 
 .error-message {
-    color: #b42318;
+    color: var(--color-danger);
 }
 
 @media (max-width: 900px) {
@@ -636,16 +680,16 @@ export default {
 }
 
 @media (max-width: 600px) {
+    .patient-overview {
+        padding: 24px 16px 48px;
+    }
+
+    .overview-card {
+        padding: 14px;
+    }
+
     .filters-row {
         grid-template-columns: 1fr;
-    }
-
-    .patient-overview {
-        padding: 20px 16px;
-    }
-
-    .page-header h1 {
-        font-size: 22px;
     }
 }
 </style>
