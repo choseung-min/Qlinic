@@ -41,7 +41,12 @@
                 {{ nextPatient.visitStatus }}
               </span>
             </div>
-            <button class="details-button" type="button" @click="openPatient(nextPatient.id)">
+            <button
+              class="details-button"
+              type="button"
+              :disabled="!canOpenPatient(nextPatient)"
+              @click="openPatient(nextPatient)"
+            >
               View Details
             </button>
           </div>
@@ -70,7 +75,13 @@
               <span class="status-badge" :class="statusClass(visit.visitStatus)">
                 {{ visit.visitStatus }}
               </span>
-              <button class="view-button" type="button" @click="openPatient(visit.id)">
+              <button
+                class="view-button"
+                type="button"
+                :disabled="!canOpenPatient(visit)"
+                :title="patientAccessMessage(visit)"
+                @click="openPatient(visit)"
+              >
                 View
               </button>
             </article>
@@ -322,10 +333,24 @@ function statusClass(status) {
   return String(status).toLowerCase().replaceAll(" ", "-");
 }
 
-function openPatient(visitId) {
+function canOpenPatient(visit) {
+  return visit?.visitStatus === "Called" && visit?.doctorId === doctor.value.id;
+}
+
+function patientAccessMessage(visit) {
+  return canOpenPatient(visit)
+    ? "View patient information"
+    : "Patient information is available after staff calls the patient.";
+}
+
+function openPatient(visit) {
+  if (!canOpenPatient(visit)) {
+    return;
+  }
+
   router.push({
     name: "DoctorPatientInformation",
-    params: { visitId },
+    params: { visitId: visit.id },
   });
 }
 

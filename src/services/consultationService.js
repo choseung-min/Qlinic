@@ -325,7 +325,7 @@ export async function startConsultation({ visitId, doctorId }) {
       throw new Error("This visit already has a completed consultation.");
     }
 
-    if (visit.visitStatus !== "Waiting") {
+    if (visit.visitStatus !== "Called") {
       throw new Error(
         `This visit cannot start a consultation from its current status (${visit.visitStatus || "unknown"}).`,
       );

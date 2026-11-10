@@ -114,7 +114,10 @@ import { useRoute, useRouter } from "vue-router";
 import { auth } from "@/services/firebase";
 import { signOutUser } from "@/services/auth";
 import { resolveDoctorForUser } from "@/services/doctorService";
-import { getDoctorPatientDetails } from "@/services/doctorPatientService";
+import {
+  getDoctorPatientDetails,
+  watchDoctorPatientVisit,
+} from "@/services/doctorPatientService";
 import { startConsultation } from "@/services/consultationService";
 
 const DetailItem = defineComponent({
@@ -151,6 +154,7 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const isStartingConsultation = ref(false);
 let unsubscribeAuth;
+let unsubscribeVisit;
 
 onMounted(() => {
   unsubscribeAuth = auth.onAuthStateChanged(async (firebaseUser) => {
@@ -175,9 +179,39 @@ onMounted(() => {
       appointment.value = details.appointment;
       consultations.value = details.consultations;
       consultationError.value = details.consultationError || "";
+      unsubscribeVisit = watchDoctorPatientVisit(
+        route.params.visitId,
+        (updatedVisit) => {
+          if (
+            updatedVisit.doctorId !== doctor.value.id
+            || updatedVisit.visitStatus !== "Called"
+          ) {
+            patient.value = {};
+            visit.value = {};
+            appointment.value = null;
+            consultations.value = [];
+            errorMessage.value =
+              "This patient must be called by staff before you can view their information or start consultation.";
+            return;
+          }
+
+          visit.value = updatedVisit;
+          errorMessage.value = "";
+        },
+        (error) => {
+          console.error("Unable to monitor patient visit access.", error);
+          patient.value = {};
+          visit.value = {};
+          appointment.value = null;
+          consultations.value = [];
+          errorMessage.value = "Unable to verify access to this patient.";
+        },
+      );
     } catch (error) {
       console.error("Unable to load patient information.", error);
-      errorMessage.value = error.code === "permission-denied"
+      errorMessage.value = error.code === "visit-not-called"
+        ? error.message
+        : error.code === "permission-denied"
         ? "You do not have permission to view this patient."
         : error.message || "Unable to load patient information.";
     } finally {
@@ -187,6 +221,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => unsubscribeAuth?.());
+onUnmounted(() => unsubscribeVisit?.());
 
 async function handleStartConsultation() {
   if (isStartingConsultation.value || !doctor.value.id || !visit.value.id) {
@@ -196,6 +231,12 @@ async function handleStartConsultation() {
   isStartingConsultation.value = true;
   errorMessage.value = "";
   try {
+    if (visit.value.visitStatus !== "Called") {
+      errorMessage.value =
+        "This patient must be called by staff before you can view their information or start consultation.";
+      return;
+    }
+
     const result = await startConsultation({
       visitId: visit.value.id,
       doctorId: doctor.value.id,
@@ -206,7 +247,9 @@ async function handleStartConsultation() {
     });
   } catch (error) {
     console.error("Unable to start consultation.", error);
-    errorMessage.value = error.code === "permission-denied"
+    errorMessage.value = error.message?.includes("current status")
+      ? "This patient must be called by staff before you can start consultation."
+      : error.code === "permission-denied"
       ? "You do not have permission to start this consultation."
       : error.message || "Unable to start consultation.";
   } finally {
