@@ -118,6 +118,9 @@ export async function registerPatient({
   patientIdentifier,
   address,
   preferredLanguage,
+  allergies,
+  medicalConditions,
+  currentMedications,
 }) {
   const credential = await auth.createUserWithEmailAndPassword(email, password);
   const { uid } = credential.user;
@@ -132,6 +135,9 @@ export async function registerPatient({
       patientIdentifier,
       address,
       preferredLanguage,
+      allergies,
+      medicalConditions,
+      currentMedications,
     };
 
     await db.collection("users").doc(uid).set({

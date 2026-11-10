@@ -15,15 +15,13 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     throw new Error("You are not authorized to view this patient.");
   }
 
-// staff must call the patient before the doctor can view their information
-// allow view access during an ongoing consultation as well
-if (!["Called", "In Consultation"].includes(visit.visitStatus)) {
-  const error = new Error(
-    "This patient must be called by staff before you can view their information or start consultation.",
-  );
-  error.code = "visit-not-called";
-  throw error;
-}
+  if (!["Called", "In Consultation"].includes(visit.visitStatus)) {
+    const error = new Error(
+      "This patient must be called by staff before you can view their information or start consultation.",
+    );
+    error.code = "visit-not-called";
+    throw error;
+  }
 
 // accountless walk-ins do not have a users/{patientId} document
 // their information comes from the assigned visit instead
@@ -48,6 +46,24 @@ if (visit.patientId == null) {
 // a supplied but invalid patient ID must not be treated as accountless
 if (typeof visit.patientId !== "string" || !visit.patientId.trim()) {
   throw new Error("The patient profile could not be found.");
+}
+
+if (visit.visitStatus === "In Consultation") {
+  const consultationSnapshot = await db
+    .collection("consultations")
+    .doc(visitId)
+    .get();
+  const consultation = consultationSnapshot.data() || {};
+
+  if (
+    !consultationSnapshot.exists
+    || consultation.status !== "Ongoing"
+    || consultation.visitId !== visitId
+    || consultation.doctorId !== doctorId
+    || consultation.patientId !== visit.patientId
+  ) {
+    throw new Error("The ongoing consultation could not be found.");
+  }
 }
 
   const patientSnapshot = await db
@@ -89,6 +105,15 @@ if (typeof visit.patientId !== "string" || !visit.patientId.trim()) {
     patient: {
       ...patientProfile,
       ...patientDetails,
+      allergies: patientProfile.allergies || visit.allergies || patientDetails.allergies,
+      medicalConditions:
+        patientProfile.medicalConditions
+        || visit.medicalConditions
+        || patientDetails.medicalConditions,
+      currentMedications:
+        patientProfile.currentMedications
+        || visit.currentMedications
+        || patientDetails.currentMedications,
     },
     consultations: consultationResult.records,
     consultationError: consultationResult.error,

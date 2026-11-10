@@ -151,6 +151,9 @@ export async function registerWalkInPatient({
   patientId = "",
   reasonForVisit,
   doctorId = "",
+  allergies = "",
+  medicalConditions = "",
+  currentMedications = "",
 }) {
   const trimmedName = patientName?.trim();
   const trimmedPatientId = patientId?.trim();
@@ -210,6 +213,9 @@ export async function registerWalkInPatient({
       appointmentDate: visitDate,
       appointmentTime,
       reasonForVisit: reasonForVisit.trim(),
+      allergies: allergies?.trim() || "",
+      medicalConditions: medicalConditions?.trim() || "",
+      currentMedications: currentMedications?.trim() || "",
       queueNumber,
       queueOrder: queueNumber,
       visitStatus: "Waiting",
