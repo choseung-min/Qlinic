@@ -20,6 +20,37 @@
           for patients without an account.
         </p>
 
+        <label for="allergies">
+          Allergies <span class="optional-label">(optional)</span>
+        </label>
+        <textarea
+          id="allergies"
+          v-model.trim="allergies"
+          rows="2"
+          placeholder="List any known allergies"
+        ></textarea>
+
+        <label for="medical-conditions">
+          Existing medical conditions
+          <span class="optional-label">(optional)</span>
+        </label>
+        <textarea
+          id="medical-conditions"
+          v-model.trim="medicalConditions"
+          rows="2"
+          placeholder="List any existing medical conditions"
+        ></textarea>
+
+        <label for="current-medications">
+          Current medications <span class="optional-label">(optional)</span>
+        </label>
+        <textarea
+          id="current-medications"
+          v-model.trim="currentMedications"
+          rows="2"
+          placeholder="List any current medications"
+        ></textarea>
+
         <label for="reason">Reason for visit</label>
         <textarea id="reason" v-model.trim="reasonForVisit" required rows="3"
           placeholder="Briefly describe the reason for the visit"></textarea>
@@ -71,6 +102,9 @@ const router = useRouter();
 const patientName = ref("");
 const patientId = ref("");
 const reasonForVisit = ref("");
+const allergies = ref("");
+const medicalConditions = ref("");
+const currentMedications = ref("");
 const isSubmitting = ref(false);
 const successMessage = ref("");
 const errorMessage = ref("");
@@ -109,6 +143,9 @@ async function handleSubmit() {
       patientId: patientId.value,
       reasonForVisit: reasonForVisit.value,
       doctorId: selectedDoctorId.value,
+      allergies: allergies.value,
+      medicalConditions: medicalConditions.value,
+      currentMedications: currentMedications.value,
     });
 
     successMessage.value = `Patient registered. Queue number: Q${result.queueNumber}, assigned to ${result.doctor.name}.`;

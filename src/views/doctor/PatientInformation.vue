@@ -99,8 +99,19 @@
           </article>
         </section>
 
-        <button class="start-button" type="button" :disabled="isStartingConsultation" @click="handleStartConsultation">
-          {{ isStartingConsultation ? "Starting..." : "Start Consultation" }}
+        <button
+          class="start-button"
+          type="button"
+          :disabled="isStartingConsultation"
+          @click="handleStartConsultation"
+        >
+          {{
+            isStartingConsultation
+              ? "Opening..."
+              : visit.visitStatus === "In Consultation"
+                ? "Continue Consultation"
+                : "Start Consultation"
+          }}
         </button>
       </template>
     </main>
@@ -184,7 +195,7 @@ onMounted(() => {
         (updatedVisit) => {
           if (
             updatedVisit.doctorId !== doctor.value.id
-            || updatedVisit.visitStatus !== "Called"
+            || !["Called", "In Consultation"].includes(updatedVisit.visitStatus)
           ) {
             patient.value = {};
             visit.value = {};
@@ -231,9 +242,17 @@ async function handleStartConsultation() {
   isStartingConsultation.value = true;
   errorMessage.value = "";
   try {
-    if (visit.value.visitStatus !== "Called") {
+    if (!["Called", "In Consultation"].includes(visit.value.visitStatus)) {
       errorMessage.value =
         "This patient must be called by staff before you can view their information or start consultation.";
+      return;
+    }
+
+    if (visit.value.visitStatus === "In Consultation") {
+      await router.push({
+        name: "DoctorConsultation",
+        params: { consultationId: visit.value.id },
+      });
       return;
     }
 

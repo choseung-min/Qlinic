@@ -59,6 +59,33 @@
           <label for="mobile-number">Mobile number</label>
           <input id="mobile-number" v-model.trim="form.mobileNumber" type="tel" />
         </div>
+        <div class="field field-wide">
+          <label for="allergies">Allergies</label>
+          <textarea
+            id="allergies"
+            v-model.trim="form.allergies"
+            rows="2"
+            placeholder="List any known allergies"
+          ></textarea>
+        </div>
+        <div class="field field-wide">
+          <label for="medical-conditions">Existing medical conditions</label>
+          <textarea
+            id="medical-conditions"
+            v-model.trim="form.medicalConditions"
+            rows="2"
+            placeholder="List any existing medical conditions"
+          ></textarea>
+        </div>
+        <div class="field field-wide">
+          <label for="current-medications">Current medications</label>
+          <textarea
+            id="current-medications"
+            v-model.trim="form.currentMedications"
+            rows="2"
+            placeholder="List any current medications"
+          ></textarea>
+        </div>
         <div class="field">
           <label for="email">Email address</label>
           <input id="email" :value="form.email" disabled type="email" />
@@ -109,6 +136,18 @@
           <dt>Email address</dt>
           <dd>{{ profile.email || "—" }}</dd>
         </div>
+        <div class="profile-field field-wide">
+          <dt>Allergies</dt>
+          <dd>{{ profile.allergies || "—" }}</dd>
+        </div>
+        <div class="profile-field field-wide">
+          <dt>Existing medical conditions</dt>
+          <dd>{{ profile.medicalConditions || "—" }}</dd>
+        </div>
+        <div class="profile-field field-wide">
+          <dt>Current medications</dt>
+          <dd>{{ profile.currentMedications || "—" }}</dd>
+        </div>
       </div>
     </section>
   </main>
@@ -137,6 +176,9 @@ function createEmptyProfile() {
     preferredLanguage: "",
     mobileNumber: "",
     email: "",
+    allergies: "",
+    medicalConditions: "",
+    currentMedications: "",
   };
 }
 
@@ -199,6 +241,9 @@ async function saveProfile() {
     address: form.address,
     preferredLanguage: form.preferredLanguage,
     mobileNumber: form.mobileNumber,
+    allergies: form.allergies,
+    medicalConditions: form.medicalConditions,
+    currentMedications: form.currentMedications,
   };
 
   try {
@@ -335,7 +380,8 @@ onUnmounted(() => {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
@@ -348,8 +394,14 @@ onUnmounted(() => {
 }
 
 .field input:focus-visible,
-.field select:focus-visible {
+.field select:focus-visible,
+.field textarea:focus-visible {
   border-color: var(--color-primary-dark);
+}
+
+.field textarea {
+  line-height: 1.5;
+  resize: vertical;
 }
 
 .field input:disabled {

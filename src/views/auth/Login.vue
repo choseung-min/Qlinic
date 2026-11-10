@@ -75,6 +75,37 @@
             v-model.trim="preferredLanguage"
             type="text"
           />
+
+          <label for="allergies">
+            Allergies <span class="optional-label">(optional)</span>
+          </label>
+          <textarea
+            id="allergies"
+            v-model.trim="allergies"
+            rows="2"
+            placeholder="List any known allergies"
+          ></textarea>
+
+          <label for="medical-conditions">
+            Existing medical conditions
+            <span class="optional-label">(optional)</span>
+          </label>
+          <textarea
+            id="medical-conditions"
+            v-model.trim="medicalConditions"
+            rows="2"
+            placeholder="List any existing medical conditions"
+          ></textarea>
+
+          <label for="current-medications">
+            Current medications <span class="optional-label">(optional)</span>
+          </label>
+          <textarea
+            id="current-medications"
+            v-model.trim="currentMedications"
+            rows="2"
+            placeholder="List any current medications"
+          ></textarea>
         </template>
 
         <label for="email">Email</label>
@@ -139,6 +170,9 @@ const sex = ref("");
 const patientIdentifier = ref("");
 const address = ref("");
 const preferredLanguage = ref("");
+const allergies = ref("");
+const medicalConditions = ref("");
+const currentMedications = ref("");
 const email = ref("");
 const password = ref("");
 const staffId = ref("");
@@ -161,6 +195,9 @@ async function handleSubmit() {
         patientIdentifier: patientIdentifier.value,
         address: address.value,
         preferredLanguage: preferredLanguage.value,
+        allergies: allergies.value,
+        medicalConditions: medicalConditions.value,
+        currentMedications: currentMedications.value,
       });
     } else {
       const { role } = await signInUser({
@@ -245,7 +282,8 @@ input[type="password"],
 input[type="text"],
 input[type="tel"],
 input[type="date"],
-select {
+select,
+textarea {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control, 6px);
@@ -257,10 +295,16 @@ select {
 }
 
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   border-color: var(--color-primary-dark);
   outline: 2px solid var(--color-primary-dark);
   outline-offset: 1px;
+}
+
+textarea {
+  line-height: 1.5;
+  resize: vertical;
 }
 
 .error-message {

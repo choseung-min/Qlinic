@@ -334,7 +334,10 @@ function statusClass(status) {
 }
 
 function canOpenPatient(visit) {
-  return visit?.visitStatus === "Called" && visit?.doctorId === doctor.value.id;
+  return (
+    ["Called", "In Consultation"].includes(visit?.visitStatus)
+    && visit?.doctorId === doctor.value.id
+  );
 }
 
 function patientAccessMessage(visit) {
