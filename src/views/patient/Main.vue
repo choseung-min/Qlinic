@@ -21,7 +21,7 @@
         <div class="queue-heading">
           <div class="queue-title-group">
             <h2 id="queue-title">You're in the queue</h2>
-            <span class="status-badge">{{ currentVisit.visitStatus }}</span>
+            <span class="status-badge" :class="String(currentVisit.visitStatus || '').toLowerCase().replaceAll(' ', '-')">{{ currentVisit.visitStatus }}</span>
           </div>
           <button
             class="leave-button"
@@ -34,7 +34,7 @@
         </div>
         <div class="queue-stats">
           <div class="queue-number">
-            <strong>Q{{ formatQueueNumber(currentVisit.queueNumber) }}</strong>
+            <strong>{{ formatQueueLabel(currentVisit.queueNumber) }}</strong>
             <span>Queue No.</span>
           </div>
           <div>
@@ -50,7 +50,20 @@
             <strong>{{ estimatedWait }} min</strong>
           </div>
         </div>
-        <p v-if="patientsAhead === 0" class="next-message">
+        <p v-if="currentVisit.visitStatus === 'Called'" class="next-message">
+          You're being called. Please go to the consultation room now.
+        </p>
+        <p v-if="breakNotice" class="queue-note">
+          {{ breakNotice }}
+        </p>
+        <p v-else-if="currentVisit.visitStatus === 'Late'" class="queue-note">
+          You were marked late and moved to the back of the queue. Please
+          check in with reception when you arrive.
+        </p>
+        <p v-else-if="currentVisit.visitStatus === 'Absent'" class="queue-note">
+          You were marked absent. Please speak to reception to rejoin the queue.
+        </p>
+        <p v-else-if="patientsAhead === 0" class="next-message">
           You're next! Please head to the clinic now.
         </p>
         <p v-else class="queue-note">
@@ -92,7 +105,7 @@
         </span>
       </router-link>
       <router-link class="quick-action card" to="/personal-details">
-        <span class="action-icon" aria-hidden="true">♙</span>
+        <span class="action-icon" aria-hidden="true">◎</span>
         <span>
           <strong>My Profile</strong>
           <small>Update your personal details.</small>
@@ -129,7 +142,7 @@
           @keydown.space.prevent="openAppointment(appointment.id)"
         >
           <div class="appointment-topline">
-            <span class="appointment-status">{{ appointment.status }}</span>
+            <span class="appointment-status" :class="'appointment-status--' + String(appointment.status || '').toLowerCase()">{{ appointment.status }}</span>
             <span>{{ formatAppointmentDate(appointment.date) }}</span>
           </div>
           <h3>{{ appointment.doctorName }}</h3>
@@ -164,9 +177,13 @@ const currentVisit = ref(null);
 const waitingVisits = ref([]);
 const appointmentsError = ref("");
 const queueError = ref("");
+const doctorAvailability = ref(null);
+const clockTick = ref(Date.now());
 let stopActiveVisitListener;
 let stopWaitingQueueListener;
+let stopDoctorAvailabilityListener;
 let stopAuthListener;
+let breakRefreshTimer;
 
 const patientsAhead = computed(() => {
   if (!currentVisit.value || currentVisit.value.visitStatus !== "Waiting") {
@@ -182,7 +199,40 @@ const queuePosition = computed(() =>
   currentVisit.value?.visitStatus === "Waiting" ? patientsAhead.value + 1 : 0,
 );
 
-const estimatedWait = computed(() => patientsAhead.value * 15);
+const estimatedWait = computed(() => {
+  const baseWait = patientsAhead.value * 15;
+  if (
+    currentVisit.value?.visitStatus !== "Waiting" ||
+    doctorAvailability.value?.availabilityStatus !== "On Break"
+  ) {
+    return baseWait;
+  }
+
+  const remainingBreak = getRemainingBreakMinutes(
+    doctorAvailability.value,
+    clockTick.value,
+  );
+  return remainingBreak == null ? baseWait : baseWait + remainingBreak;
+});
+
+const breakNotice = computed(() => {
+  if (doctorAvailability.value?.availabilityStatus !== "On Break") {
+    return "";
+  }
+
+  const remainingBreak = getRemainingBreakMinutes(
+    doctorAvailability.value,
+    clockTick.value,
+  );
+  if (remainingBreak == null) {
+    return "Your doctor is currently on break. The return time is not available; this estimate is approximate.";
+  }
+  if (remainingBreak === 0) {
+    return "Your doctor remains on break. The displayed wait is approximate and may be stale until the doctor returns.";
+  }
+
+  return `Your doctor is on break. The displayed wait includes approximately ${remainingBreak} minute${remainingBreak === 1 ? "" : "s"} of remaining break time.`;
+});
 
 async function loadPatientProfile(user) {
   patientName.value = user.displayName?.trim() || "there";
@@ -289,6 +339,13 @@ function formatQueueNumber(queueNumber) {
   return String(queueNumber).padStart(2, "0");
 }
 
+function formatQueueLabel(queueNumber) {
+  const value = String(queueNumber);
+  return value.startsWith("A")
+    ? `A${formatQueueNumber(value.slice(1))}`
+    : `Q${formatQueueNumber(value)}`;
+}
+
 function openAppointment(appointmentId) {
   router.push({ name: "History", query: { appointmentId } });
 }
@@ -325,6 +382,7 @@ function startActiveVisitListener(patientId) {
     (visit) => {
       currentVisit.value = visit;
       isInitializingQueue.value = false;
+      startDoctorAvailabilityListener(visit?.doctorId);
 
       if (visit) {
         startWaitingQueueListener(visit.visitDate);
@@ -335,6 +393,62 @@ function startActiveVisitListener(patientId) {
     },
     handleQueueListenerError,
   );
+}
+
+function startDoctorAvailabilityListener(doctorId) {
+  stopDoctorAvailabilityListener?.();
+  stopDoctorAvailabilityListener = undefined;
+  doctorAvailability.value = null;
+  clearInterval(breakRefreshTimer);
+  breakRefreshTimer = undefined;
+
+  if (!doctorId) {
+    return;
+  }
+
+  stopDoctorAvailabilityListener = db
+    .collection("doctors")
+    .doc(doctorId)
+    .onSnapshot(
+      (snapshot) => {
+        doctorAvailability.value = snapshot.exists
+          ? { id: snapshot.id, ...snapshot.data() }
+          : null;
+        clearInterval(breakRefreshTimer);
+        if (doctorAvailability.value?.availabilityStatus === "On Break") {
+          breakRefreshTimer = window.setInterval(() => {
+            clockTick.value = Date.now();
+          }, 60_000);
+        } else {
+          clockTick.value = Date.now();
+        }
+      },
+      (error) => {
+        console.error("Unable to load doctor availability for queue estimate.", error);
+        doctorAvailability.value = null;
+      },
+    );
+}
+
+function getRemainingBreakMinutes(doctor, now) {
+  const startedAt = toDate(doctor?.breakStartedAt);
+  const duration = Number(doctor?.breakDurationMinutes);
+  if (!startedAt || !Number.isInteger(duration) || duration < 1) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    Math.ceil((startedAt.getTime() + duration * 60_000 - now) / 60_000),
+  );
+}
+
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === "function") return value.toDate();
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 async function handleJoinQueue() {
@@ -352,6 +466,7 @@ async function handleJoinQueue() {
     currentVisit.value = visit;
     isInitializingQueue.value = false;
     startWaitingQueueListener(visit.visitDate);
+    startDoctorAvailabilityListener(visit.doctorId);
   } catch (error) {
     console.error(
       "Unable to join the walk-in queue:",
@@ -363,6 +478,8 @@ async function handleJoinQueue() {
     queueError.value =
       error.code === "duplicate-booking"
         ? "You are already in today's walk-in queue."
+        : error.code === "already-in-queue"
+          ? "You are already in today's queue (for example, a checked-in appointment)."
         : error.code === "permission-denied"
           ? `You do not have permission to join the queue (${error.queueOperation || "unknown operation"}).`
           : `Unable to join the queue (${error.queueOperation || "unknown operation"}: ${error.code || "unknown error"}).`;
@@ -404,6 +521,8 @@ onMounted(() => {
   stopAuthListener = auth.onAuthStateChanged((user) => {
     stopActiveVisitListener?.();
     stopWaitingQueueListener?.();
+    stopDoctorAvailabilityListener?.();
+    clearInterval(breakRefreshTimer);
 
     if (!user) {
       patientName.value = "there";
@@ -425,49 +544,58 @@ onUnmounted(() => {
   stopAuthListener?.();
   stopActiveVisitListener?.();
   stopWaitingQueueListener?.();
+  stopDoctorAvailabilityListener?.();
+  clearInterval(breakRefreshTimer);
 });
 </script>
 
 <style scoped>
 .dashboard-page {
-  max-width: 950px;
+  max-width: 1000px;
 }
 
 .eyebrow {
-  color: var(--color-primary);
-  font-size: 12px;
+  color: var(--color-primary-dark);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  margin: 0 0 8px;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
   text-transform: uppercase;
 }
 
+.dashboard-page .page-header {
+  margin-bottom: 20px;
+}
+
 .appointments-section {
-  margin: 28px 0 32px;
+  margin: 32px 0;
 }
 
 .section-heading {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   justify-content: space-between;
   margin-bottom: 14px;
 }
 
 .section-heading h2 {
-  font-size: 16px;
+  font-size: 19px;
   margin: 0;
 }
 
 .book-new-button {
   align-items: center;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   color: var(--color-primary-dark);
   display: inline-flex;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   gap: 5px;
-  padding: 7px 10px;
+  padding: 9px 12px;
   text-decoration: none;
 }
 
@@ -477,28 +605,26 @@ onUnmounted(() => {
 
 .appointments-grid {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .appointment-card {
   cursor: pointer;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   min-height: 150px;
-  padding: 16px;
-  transition:
-    border-color 0.2s ease,
-    transform 0.2s ease;
+  padding: 18px;
+  transition: border-color 0.2s ease;
 }
 
 .appointment-card:hover {
   border-color: var(--color-primary);
-  transform: translateY(-1px);
 }
 
 .appointment-card:focus-visible {
-  outline: 3px solid var(--color-primary);
+  outline: 2px solid var(--color-primary-dark);
   outline-offset: 3px;
 }
 
@@ -508,38 +634,56 @@ onUnmounted(() => {
 }
 
 .appointment-card h3 {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .appointment-card p {
   color: var(--color-text-muted);
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.appointment-card strong {
-  font-size: 13px;
+.appointment-card > strong {
+  font-size: 14px;
+  margin-top: auto;
 }
 
 .appointment-topline {
   align-items: center;
   color: var(--color-text-muted);
   display: flex;
+  flex-wrap: wrap;
   font-size: 12px;
+  gap: 8px;
   justify-content: space-between;
 }
 
 .appointment-status {
   background: var(--color-primary-soft);
-  border-radius: 4px;
+  border-radius: var(--radius-badge);
   color: var(--color-primary-dark);
-  font-weight: 700;
-  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
   text-transform: capitalize;
 }
 
-.empty-message {
+.appointment-status--completed {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.appointment-status--cancelled {
+  background: #eef2f4;
   color: var(--color-text-muted);
-  font-size: 13px;
+}
+
+.empty-message,
+.status-message {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .queue-card {
@@ -547,19 +691,20 @@ onUnmounted(() => {
   display: flex;
   gap: 24px;
   justify-content: space-between;
-  margin-top: 22px;
+  margin-top: 16px;
 }
 
 .joined-queue-card {
-  background: #f2fffb;
-  border-color: #b7eee3;
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-primary-dark);
   display: block;
 }
 
 .queue-heading {
   align-items: center;
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   justify-content: space-between;
   width: 100%;
 }
@@ -567,29 +712,53 @@ onUnmounted(() => {
 .queue-title-group {
   align-items: center;
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.queue-card h2 {
+  font-size: 18px;
+  margin: 0 0 6px;
 }
 
 .status-badge {
-  background: #c7f4e9;
-  border-radius: 999px;
-  color: var(--color-primary-dark);
+  background: #eef2f4;
+  border-radius: var(--radius-badge);
+  color: var(--color-text-muted);
   font-size: 12px;
-  font-weight: 700;
-  padding: 5px 10px;
+  font-weight: 600;
+  padding: 5px 9px;
+}
+
+.status-badge.called,
+.status-badge.in-consultation {
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+
+.status-badge.late,
+.status-badge.awaiting-medicine {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.status-badge.completed {
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .queue-stats {
-  align-items: stretch;
+  align-items: center;
   display: grid;
   gap: 18px;
-  grid-template-columns: 1.2fr repeat(3, 1fr);
+  grid-template-columns: 112px repeat(3, minmax(0, 1fr));
   margin-top: 20px;
 }
 
 .queue-stats > div {
   display: grid;
-  gap: 5px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .queue-stats span {
@@ -599,63 +768,59 @@ onUnmounted(() => {
 
 .queue-stats strong {
   color: var(--color-text);
-  font-size: 18px;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
 }
 
 .queue-number {
-  aspect-ratio: 1;
-  background: var(--color-primary);
-  border-radius: 8px;
-  color: var(--color-surface);
+  align-content: center;
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-control);
   justify-items: center;
+  min-height: 102px;
   padding: 12px;
-  width: 114px;
 }
 
 .queue-number strong,
 .queue-number span {
-  color: inherit;
+  color: var(--color-primary-dark);
 }
 
 .queue-number strong {
-  font-size: 24px;
-}
-
-.next-message,
-.queue-note {
-  background: #cdf7ed;
-  border-radius: 7px;
-  color: var(--color-primary-dark) !important;
-  margin-top: 20px !important;
-  padding: 11px 12px;
-}
-
-.status-message {
-  color: var(--color-text-muted);
-  font-size: 13px;
-  margin-top: 24px;
-}
-
-.queue-card h2 {
-  font-size: 14px;
-  margin: 0 0 6px;
+  font-size: 27px;
 }
 
 .queue-card p {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.5;
   margin: 0;
 }
 
-.queue-card button {
-  flex: 0 0 auto;
+.queue-card .next-message,
+.queue-card .queue-note {
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-control);
+  color: var(--color-primary-dark);
+  margin-top: 20px;
+  padding: 11px 12px;
+}
+
+.queue-card .next-message {
+  border-left: 3px solid var(--color-primary-dark);
+  font-weight: 600;
+}
+
+.queue-card .error-message {
+  color: var(--color-danger);
+  margin-top: 10px;
 }
 
 .quick-actions {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 22px;
+  margin-top: 16px;
 }
 
 .quick-action {
@@ -663,17 +828,14 @@ onUnmounted(() => {
   color: inherit;
   display: flex;
   gap: 12px;
-  min-height: 84px;
-  padding: 16px;
+  min-height: 98px;
+  padding: 18px;
   text-decoration: none;
-  transition:
-    border-color 0.2s ease,
-    transform 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 
 .quick-action:hover {
   border-color: var(--color-primary);
-  transform: translateY(-1px);
 }
 
 .quick-action strong,
@@ -682,73 +844,87 @@ onUnmounted(() => {
 }
 
 .quick-action strong {
-  font-size: 13px;
-  margin-bottom: 5px;
+  font-size: 14px;
+  margin-bottom: 6px;
 }
 
 .quick-action small {
   color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .action-icon {
   align-items: center;
-  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-control);
+  color: var(--color-primary-dark);
   display: inline-flex;
-  font-size: 18px;
-  height: 22px;
+  flex: 0 0 34px;
+  font-size: 17px;
+  height: 34px;
   justify-content: center;
-  width: 22px;
 }
 
 .leave-button {
-  background: transparent;
-  border: 1px solid #b7eee3;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   color: var(--color-primary-dark);
-  padding: 8px 12px;
+  padding: 9px 12px;
 }
 
-.leave-button:hover {
-  background: #dffaf4;
+.leave-button:hover:not(:disabled) {
+  background: var(--color-primary-soft);
 }
 
 .error-message {
-  color: #b42318 !important;
-  margin-top: 10px !important;
+  color: var(--color-danger);
+  font-size: 13px;
+  margin-top: 10px;
 }
 
 .success-message {
   background: var(--color-primary-soft);
-  border-radius: 7px;
-  color: var(--color-primary-dark) !important;
-  margin-top: 12px !important;
-  padding: 9px 11px;
+  border-radius: var(--radius-control);
+  color: var(--color-primary-dark);
+  margin-top: 12px;
+  padding: 10px 12px;
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.65;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 850px) {
+  .appointments-grid,
+  .quick-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
   .appointments-grid,
   .quick-actions {
     grid-template-columns: 1fr;
   }
 
   .queue-card {
-    align-items: flex-start;
+    align-items: stretch;
     flex-direction: column;
   }
 
-  .queue-card button {
+  .queue-card > button {
     width: 100%;
   }
 
   .queue-stats {
     gap: 12px;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .queue-heading {
+    align-items: flex-start;
   }
 }
 </style>

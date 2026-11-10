@@ -2,7 +2,11 @@
   <main class="page auth-page">
     <section class="card auth-card">
       <header class="page-header">
-        <h1>{{ isRegistering ? "Create your patient account" : "Welcome to Qlinic" }}</h1>
+        <h1>
+          {{
+            isRegistering ? "Create your patient account" : "Welcome to Qlinic"
+          }}
+        </h1>
         <p>
           {{
             isRegistering
@@ -15,7 +19,12 @@
       <form @submit.prevent="handleSubmit">
         <template v-if="isRegistering">
           <label for="display-name">Name</label>
-          <input id="display-name" v-model.trim="displayName" type="text" required />
+          <input
+            id="display-name"
+            v-model.trim="displayName"
+            type="text"
+            required
+          />
 
           <label for="mobile-number">Mobile number</label>
           <input
@@ -44,9 +53,14 @@
           </select>
 
           <label for="patient-identifier">
-            NRIC/FIN or patient identifier <span class="optional-label">(optional)</span>
+            NRIC/FIN or patient identifier
+            <span class="optional-label">(optional)</span>
           </label>
-          <input id="patient-identifier" v-model.trim="patientIdentifier" type="text" />
+          <input
+            id="patient-identifier"
+            v-model.trim="patientIdentifier"
+            type="text"
+          />
 
           <label for="address">
             Residential address <span class="optional-label">(optional)</span>
@@ -56,7 +70,42 @@
           <label for="preferred-language">
             Preferred language <span class="optional-label">(optional)</span>
           </label>
-          <input id="preferred-language" v-model.trim="preferredLanguage" type="text" />
+          <input
+            id="preferred-language"
+            v-model.trim="preferredLanguage"
+            type="text"
+          />
+
+          <label for="allergies">
+            Allergies <span class="optional-label">(optional)</span>
+          </label>
+          <textarea
+            id="allergies"
+            v-model.trim="allergies"
+            rows="2"
+            placeholder="List any known allergies"
+          ></textarea>
+
+          <label for="medical-conditions">
+            Existing medical conditions
+            <span class="optional-label">(optional)</span>
+          </label>
+          <textarea
+            id="medical-conditions"
+            v-model.trim="medicalConditions"
+            rows="2"
+            placeholder="List any existing medical conditions"
+          ></textarea>
+
+          <label for="current-medications">
+            Current medications <span class="optional-label">(optional)</span>
+          </label>
+          <textarea
+            id="current-medications"
+            v-model.trim="currentMedications"
+            rows="2"
+            placeholder="List any current medications"
+          ></textarea>
         </template>
 
         <label for="email">Email</label>
@@ -66,12 +115,12 @@
         <input id="password" v-model="password" type="password" required />
 
         <template v-if="!isRegistering">
-          <label for="staff-id">Staff ID</label>
+          <label for="staff-id">Staff or doctor ID</label>
           <input
             id="staff-id"
             v-model.trim="staffId"
             type="text"
-            placeholder="Leave blank if you are a patient"
+            placeholder="Optional for patients"
           />
         </template>
 
@@ -92,7 +141,11 @@
         </button>
       </form>
 
-      <button class="button-secondary mode-button" type="button" @click="toggleMode">
+      <button
+        class="button-secondary mode-button"
+        type="button"
+        @click="toggleMode"
+      >
         {{
           isRegistering
             ? "Already have an account? Sign in"
@@ -117,6 +170,9 @@ const sex = ref("");
 const patientIdentifier = ref("");
 const address = ref("");
 const preferredLanguage = ref("");
+const allergies = ref("");
+const medicalConditions = ref("");
+const currentMedications = ref("");
 const email = ref("");
 const password = ref("");
 const staffId = ref("");
@@ -139,6 +195,9 @@ async function handleSubmit() {
         patientIdentifier: patientIdentifier.value,
         address: address.value,
         preferredLanguage: preferredLanguage.value,
+        allergies: allergies.value,
+        medicalConditions: medicalConditions.value,
+        currentMedications: currentMedications.value,
       });
     } else {
       const { role } = await signInUser({
@@ -147,7 +206,14 @@ async function handleSubmit() {
         staffId: staffId.value,
       });
 
-      await router.push({ name: role === "staff" ? "StaffMain" : "Main" });
+      await router.push({
+        name:
+          role === "doctor"
+            ? "DoctorMain"
+            : role === "staff"
+              ? "StaffMain"
+              : "Main",
+      });
       return;
     }
 
@@ -158,7 +224,7 @@ async function handleSubmit() {
         ? "The email or password is incorrect."
         : error.code === "auth/email-already-in-use"
           ? "An account already exists for this email."
-        : error.message || "Unable to sign in. Please try again.";
+          : error.message || "Unable to sign in. Please try again.";
   } finally {
     isSubmitting.value = false;
   }
@@ -184,6 +250,10 @@ function toggleMode() {
   width: 100%;
 }
 
+.auth-card .page-header {
+  margin-bottom: 24px;
+}
+
 form {
   display: grid;
   gap: 10px;
@@ -192,8 +262,12 @@ form {
 label,
 legend {
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+}
+
+form label:not(:first-child) {
+  margin-top: 6px;
 }
 
 .optional-label {
@@ -208,24 +282,41 @@ input[type="password"],
 input[type="text"],
 input[type="tel"],
 input[type="date"],
-select {
+select,
+textarea {
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control, 6px);
   color: var(--color-text);
   font: inherit;
+  min-height: 44px;
   padding: 11px 12px;
+  width: 100%;
 }
 
-input:focus,
-select:focus {
-  border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary-soft);
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-primary-dark);
+  outline: 2px solid var(--color-primary-dark);
+  outline-offset: 1px;
+}
+
+textarea {
+  line-height: 1.5;
+  resize: vertical;
 }
 
 .error-message {
-  color: #b42318;
+  color: var(--color-danger, #b42318);
   font-size: 13px;
   margin: 4px 0;
+}
+
+form button[type="submit"] {
+  min-height: 44px;
+  margin-top: 10px;
+  width: 100%;
 }
 
 button:disabled {
@@ -235,6 +326,13 @@ button:disabled {
 
 .mode-button {
   margin-top: 16px;
+  min-height: 44px;
   width: 100%;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 20px;
+  }
 }
 </style>

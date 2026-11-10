@@ -6,6 +6,12 @@ import Main from "@/views/patient/Main.vue";
 import PersonalDetails from "@/views/patient/PersonalDetails.vue";
 import Login from "@/views/auth/Login.vue";
 import StaffMain from "@/views/staff/Main.vue";
+import PatientOverview from "@/views/staff/PatientOverview.vue";
+import MedicineCollection from "@/views/staff/MedicineCollection.vue";
+import WalkInRegistration from "@/views/staff/WalkInRegistration.vue";
+import DoctorMain from "@/views/doctor/Main.vue";
+import DoctorPatientInformation from "@/views/doctor/PatientInformation.vue";
+import DoctorConsultation from "@/views/doctor/Consultation.vue";
 import { auth, db } from "@/services/firebase";
 
 const routes = [
@@ -25,6 +31,42 @@ const routes = [
     name: "StaffMain",
     component: StaffMain,
     meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/staff/patient-overview",
+    name: "StaffPatientOverview",
+    component: PatientOverview,
+    meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/staff/medicine-collection",
+    name: "StaffMedicineCollection",
+    component: MedicineCollection,
+    meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/staff/walk-in-registration",
+    name: "StaffWalkInRegistration",
+    component: WalkInRegistration,
+    meta: { requiresAuth: true, role: "staff" },
+  },
+  {
+    path: "/doctor",
+    name: "DoctorMain",
+    component: DoctorMain,
+    meta: { requiresAuth: true, role: "doctor" },
+  },
+  {
+    path: "/doctor/patients/:visitId",
+    name: "DoctorPatientInformation",
+    component: DoctorPatientInformation,
+    meta: { requiresAuth: true, role: "doctor" },
+  },
+  {
+    path: "/doctor/consultations/:consultationId",
+    name: "DoctorConsultation",
+    component: DoctorConsultation,
+    meta: { requiresAuth: true, role: "doctor" },
   },
   {
     path: "/appointment-booking",
@@ -88,6 +130,10 @@ router.beforeEach(async (to) => {
   if (role !== to.meta.role) {
     if (role === "staff") {
       return { name: "StaffMain" };
+    }
+
+    if (role === "doctor") {
+      return { name: "DoctorMain" };
     }
 
     if (role === "patient") {

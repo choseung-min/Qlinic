@@ -3,7 +3,7 @@
     <header class="profile-header">
       <div>
         <p class="eyebrow">Account</p>
-        <h1><span class="profile-icon" aria-hidden="true">♙</span> My Profile</h1>
+        <h1>My Profile</h1>
         <p>View and manage your account information.</p>
       </div>
       <button
@@ -22,7 +22,6 @@
 
     <section v-else class="card profile-card" aria-labelledby="personal-info-title">
       <div class="card-heading">
-        <span class="section-number" aria-hidden="true">1</span>
         <h2 id="personal-info-title">Personal Information</h2>
       </div>
 
@@ -59,6 +58,33 @@
         <div class="field">
           <label for="mobile-number">Mobile number</label>
           <input id="mobile-number" v-model.trim="form.mobileNumber" type="tel" />
+        </div>
+        <div class="field field-wide">
+          <label for="allergies">Allergies</label>
+          <textarea
+            id="allergies"
+            v-model.trim="form.allergies"
+            rows="2"
+            placeholder="List any known allergies"
+          ></textarea>
+        </div>
+        <div class="field field-wide">
+          <label for="medical-conditions">Existing medical conditions</label>
+          <textarea
+            id="medical-conditions"
+            v-model.trim="form.medicalConditions"
+            rows="2"
+            placeholder="List any existing medical conditions"
+          ></textarea>
+        </div>
+        <div class="field field-wide">
+          <label for="current-medications">Current medications</label>
+          <textarea
+            id="current-medications"
+            v-model.trim="form.currentMedications"
+            rows="2"
+            placeholder="List any current medications"
+          ></textarea>
         </div>
         <div class="field">
           <label for="email">Email address</label>
@@ -110,6 +136,18 @@
           <dt>Email address</dt>
           <dd>{{ profile.email || "—" }}</dd>
         </div>
+        <div class="profile-field field-wide">
+          <dt>Allergies</dt>
+          <dd>{{ profile.allergies || "—" }}</dd>
+        </div>
+        <div class="profile-field field-wide">
+          <dt>Existing medical conditions</dt>
+          <dd>{{ profile.medicalConditions || "—" }}</dd>
+        </div>
+        <div class="profile-field field-wide">
+          <dt>Current medications</dt>
+          <dd>{{ profile.currentMedications || "—" }}</dd>
+        </div>
       </div>
     </section>
   </main>
@@ -138,6 +176,9 @@ function createEmptyProfile() {
     preferredLanguage: "",
     mobileNumber: "",
     email: "",
+    allergies: "",
+    medicalConditions: "",
+    currentMedications: "",
   };
 }
 
@@ -200,6 +241,9 @@ async function saveProfile() {
     address: form.address,
     preferredLanguage: form.preferredLanguage,
     mobileNumber: form.mobileNumber,
+    allergies: form.allergies,
+    medicalConditions: form.medicalConditions,
+    currentMedications: form.currentMedications,
   };
 
   try {
@@ -236,110 +280,99 @@ onUnmounted(() => {
 
 <style scoped>
 .profile-page {
-  max-width: 1150px;
+  max-width: 1000px;
 }
 
 .profile-header {
-  align-items: flex-end;
+  align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
   justify-content: space-between;
-  margin-bottom: 36px;
+  margin-bottom: 24px;
 }
 
 .profile-header h1 {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  margin-bottom: 8px;
+  font-size: var(--font-size-page-title, 28px);
+  margin-bottom: 6px;
 }
 
 .profile-header p:last-child {
   color: var(--color-text-muted);
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1.5;
   margin: 0;
 }
 
 .eyebrow {
-  color: var(--color-primary);
-  font-size: 12px;
+  color: var(--color-primary-dark);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  margin: 0 0 8px;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
   text-transform: uppercase;
-}
-
-.profile-icon {
-  color: var(--color-primary);
-  font-size: 30px;
 }
 
 .edit-button {
   align-items: center;
   display: inline-flex;
-  gap: 10px;
-  padding: 12px 20px;
+  font-size: 13px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 14px;
 }
 
 .profile-card {
-  border-radius: 16px;
-  padding: 40px;
+  border-radius: var(--radius-card);
+  padding: 24px;
 }
 
 .card-heading {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
 .card-heading h2 {
-  font-size: 20px;
+  font-size: 19px;
   margin: 0;
-}
-
-.section-number {
-  align-items: center;
-  background: var(--color-primary);
-  border-radius: 50%;
-  color: white;
-  display: inline-flex;
-  font-size: 17px;
-  font-weight: 700;
-  height: 42px;
-  justify-content: center;
-  width: 42px;
 }
 
 .profile-grid,
 .profile-form {
   display: grid;
-  gap: 26px 64px;
+  gap: 22px 32px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-field {
+  min-width: 0;
 }
 
 .profile-field dt,
 .field label {
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  margin-bottom: 10px;
-  text-transform: uppercase;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 6px;
 }
 
 .profile-field dt span {
-  text-transform: none;
+  font-weight: 400;
 }
 
 .profile-field dd {
   color: var(--color-text);
-  font-size: 16px;
+  font-size: 15px;
+  line-height: 1.5;
   margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .field {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .field-wide {
@@ -347,56 +380,75 @@ onUnmounted(() => {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  min-height: 44px;
   padding: 10px 12px;
+  width: 100%;
 }
 
-.field input:focus,
-.field select:focus {
-  border-color: var(--color-primary);
-  outline: 2px solid var(--color-primary-soft);
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  border-color: var(--color-primary-dark);
+}
+
+.field textarea {
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field input:disabled {
+  background: var(--color-background);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
 }
 
 .form-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   grid-column: 1 / -1;
   justify-content: flex-end;
 }
 
 .error-message {
-  color: #b42318;
+  color: var(--color-danger);
+  font-size: 13px;
   grid-column: 1 / -1;
   margin: 0;
 }
 
 .success-message {
-  color: var(--color-primary-dark);
+  color: var(--color-success);
+  font-size: 13px;
   grid-column: 1 / -1;
   margin: 0;
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.65;
 }
 
 @media (max-width: 700px) {
   .profile-header {
     align-items: flex-start;
-    flex-direction: column;
-    gap: 20px;
   }
 
   .profile-card {
-    padding: 24px;
+    padding: 20px 16px;
   }
 
   .profile-grid,
   .profile-form {
-    gap: 22px;
+    gap: 20px;
     grid-template-columns: 1fr;
   }
 

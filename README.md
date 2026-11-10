@@ -36,3 +36,17 @@ npm run dev
 ```sh
 npm run build
 ```
+
+### Staff and doctor login records
+
+Staff and doctors use Firebase Authentication for their email and password, plus
+a role profile in the `users` collection:
+
+- Receptionists: `users/{uid}.role` is `staff`, with a matching
+  `staff/{record}.staffId` and `uid`.
+- Doctors: `users/{uid}.role` is `doctor`, with a matching record in either the
+  `doctors` or `doctor` collection. The record must contain `uid` and a doctor
+  ID beginning with `D`. The doctor ID can either be stored as `doctorId` or
+  used as the document ID (for example, `D01`).
+
+Doctors are routed to the placeholder Doctor dashboard at `/doctor`.
