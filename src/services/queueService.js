@@ -2,9 +2,17 @@ import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
 import { db } from "@/services/firebase";
 import { getActiveDoctors } from "@/services/doctorService";
+import { getClinicDate, isClinicOpen } from "@/utils/clinicHours";
+import {
+  QUEUED_VISIT_STATUSES,
+  IN_PROGRESS_VISIT_STATUSES,
+  findRelevantVisit,
+  getVisitBlockCode,
+  canPatientLeaveVisit,
+} from "@/utils/walkInEligibility";
 
 // Late/Absent patients are still in today's queue until staff resolve them
-const ACTIVE_VISIT_STATUSES = new Set(["Waiting", "Called", "Late", "Absent"]);
+const ACTIVE_VISIT_STATUSES = QUEUED_VISIT_STATUSES;
 export const queueTimeSlots = [
   "09:00",
   "09:30",
@@ -30,9 +38,8 @@ export function watchActiveWalkInVisit(patientId, onChange, onError) {
     .where("visitDate", "==", getClinicDate())
     .onSnapshot(
     (snapshot) => {
-      const activeVisit = snapshot.docs
-        .map((document) => ({ id: document.id, ...document.data() }))
-        .find((visit) => ACTIVE_VISIT_STATUSES.has(visit.visitStatus));
+      const activeVisit = findRelevantVisit(snapshot.docs
+        .map((document) => ({ ...document.data(), id: document.id })));
 
       if (!activeVisit) {
         onChange(null);
@@ -43,6 +50,15 @@ export function watchActiveWalkInVisit(patientId, onChange, onError) {
     },
     (error) => onError(addQueueOperation(error, "active-visit-read")),
   );
+}
+
+export function watchPatientAppointments(patientId, onChange, onError) {
+  return db.collection("appointments")
+    .where("patientId", "==", patientId)
+    .onSnapshot(
+      (snapshot) => onChange(snapshot.docs.map((document) => document.data())),
+      (error) => onError(addQueueOperation(error, "walk-in-appointments-read")),
+    );
 }
 
 export function watchWaitingWalkIns(visitDate, onChange, onError) {
@@ -68,6 +84,7 @@ export async function joinWalkInQueue(patientId) {
     throw createQueueError("unauthenticated");
   }
 
+  assertClinicOpen();
   const visitDate = getClinicDate();
   const visitRef = db
     .collection("visits")
@@ -75,9 +92,25 @@ export async function joinWalkInQueue(patientId) {
   const counterRef = db.collection("queueCounters").doc(visitDate);
 
   // 6D: already in a queue today (e.g. a checked-in appointment)
-  const visitInProgress = await findVisitInProgress(patientId, visitDate);
-  if (visitInProgress && visitInProgress.id !== visitRef.id) {
-    throw createQueueError("already-in-queue");
+  const patientVisits = await db.collection("visits")
+    .where("patientId", "==", patientId)
+    .where("visitDate", "==", visitDate)
+    .get();
+  const visitInProgress = findRelevantVisit(patientVisits.docs.map((document) => ({
+    ...document.data(), id: document.id,
+  })));
+  if (visitInProgress && (
+    visitInProgress.id !== visitRef.id || !ACTIVE_VISIT_STATUSES.has(visitInProgress.visitStatus)
+  )) {
+    throw createQueueError(getVisitBlockCode(visitInProgress));
+  }
+
+  const appointments = await db.collection("appointments")
+    .where("patientId", "==", patientId)
+    .where("appointmentDate", "==", visitDate)
+    .get();
+  if (appointments.docs.some((document) => document.data().status === "booked")) {
+    throw createQueueError("appointment-today");
   }
 
   // assign a doctor up front; if every doctor is on break, staff allocate one later
@@ -95,10 +128,6 @@ export async function joinWalkInQueue(patientId) {
       const [existingVisit, counterSnapshot, doctorSnapshot] =
         await Promise.all(reads);
 
-      if (doctor?.id) {
-        assertAvailableDoctorSnapshot(doctorSnapshot, doctor.id);
-      }
-
       if (existingVisit.exists) {
         const existingData = existingVisit.data();
 
@@ -109,12 +138,21 @@ export async function joinWalkInQueue(patientId) {
             alreadyJoined: true,
           };
         }
+
+        // Never overwrite a consultation, medicine collection, or visit history.
+        throw createQueueError(getVisitBlockCode(existingData));
+      }
+
+      if (doctor?.id) {
+        assertAvailableDoctorSnapshot(doctorSnapshot, doctor.id);
       }
 
       const queueNumber = counterSnapshot.exists
         ? counterSnapshot.data()?.nextQueueNumber || 1
         : 1;
 
+      // Transactions may retry or finish after closing time.
+      assertClinicOpen();
       transaction.set(counterRef, {
         visitDate,
         nextQueueNumber: queueNumber + 1,
@@ -263,8 +301,8 @@ export async function leaveWalkInQueue(patientId) {
         throw createQueueError("not-owner");
       }
 
-      if (!ACTIVE_VISIT_STATUSES.has(visit.visitStatus)) {
-        return false;
+      if (!canPatientLeaveVisit({ ...visit, id: visitSnapshot.id }, patientId)) {
+        throw createQueueError("cannot-leave-queue");
       }
 
       transaction.delete(visitRef);
@@ -275,12 +313,10 @@ export async function leaveWalkInQueue(patientId) {
   }
 }
 
-function getClinicDate() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function assertClinicOpen() {
+  if (!isClinicOpen()) {
+    throw createQueueError("clinic-closed");
+  }
 }
 
 function createQueueError(code) {
@@ -309,13 +345,7 @@ function assertAvailableDoctorSnapshot(snapshot, doctorId) {
 
 // 6D: a patient may only have one visit in progress per day, across both
 // the appointment and walk-in queues
-const IN_PROGRESS_STATUSES = new Set([
-  "Waiting",
-  "Called",
-  "Late",
-  "Absent",
-  "In Consultation",
-]);
+const IN_PROGRESS_STATUSES = IN_PROGRESS_VISIT_STATUSES;
 
 export async function findVisitInProgress(patientId, visitDate = getClinicDate()) {
   if (!patientId) return null;
