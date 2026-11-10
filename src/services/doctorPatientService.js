@@ -15,6 +15,31 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     throw new Error("You are not authorized to view this patient.");
   }
 
+  // staff can register an accountless walk-in without a users/{patientId} document
+  // use the assigned visit for the display name, do not infer history by name
+  if (visit.patientId == null) {
+    if (
+      String(visit.visitType || "").toLowerCase() !== "walk-in" ||
+      typeof visit.patientName !== "string" ||
+      !visit.patientName.trim()
+    ) {
+      throw new Error("The patient profile could not be found.");
+    }
+
+    return {
+      visit,
+      appointment: null,
+      patient: { displayName: visit.patientName },
+      consultations: [],
+      consultationError: null,
+    };
+  }
+
+  // a supplied but invalid account link must not silently become accountless
+  if (typeof visit.patientId !== "string" || !visit.patientId.trim()) {
+    throw new Error("The patient profile could not be found.");
+  }
+
   const patientSnapshot = await db
     .collection("users")
     .doc(visit.patientId)
