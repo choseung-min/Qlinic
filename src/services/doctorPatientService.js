@@ -15,30 +15,40 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     throw new Error("You are not authorized to view this patient.");
   }
 
-  // staff can register an accountless walk-in without a users/{patientId} document
-  // use the assigned visit for the display name, do not infer history by name
-  if (visit.patientId == null) {
-    if (
-      String(visit.visitType || "").toLowerCase() !== "walk-in" ||
-      typeof visit.patientName !== "string" ||
-      !visit.patientName.trim()
-    ) {
-      throw new Error("The patient profile could not be found.");
-    }
+// staff must call the patient before the doctor can view their information
+// allow view access during an ongoing consultation as well
+if (!["Called", "In Consultation"].includes(visit.visitStatus)) {
+  const error = new Error(
+    "This patient must be called by staff before you can view their information or start consultation.",
+  );
+  error.code = "visit-not-called";
+  throw error;
+}
 
-    return {
-      visit,
-      appointment: null,
-      patient: { displayName: visit.patientName },
-      consultations: [],
-      consultationError: null,
-    };
-  }
-
-  // a supplied but invalid account link must not silently become accountless
-  if (typeof visit.patientId !== "string" || !visit.patientId.trim()) {
+// accountless walk-ins do not have a users/{patientId} document
+// their information comes from the assigned visit instead
+if (visit.patientId == null) {
+  if (
+    String(visit.visitType || "").toLowerCase() !== "walk-in" ||
+    typeof visit.patientName !== "string" ||
+    !visit.patientName.trim()
+  ) {
     throw new Error("The patient profile could not be found.");
   }
+
+  return {
+    visit,
+    appointment: null,
+    patient: { displayName: visit.patientName },
+    consultations: [],
+    consultationError: null,
+  };
+}
+
+// a supplied but invalid patient ID must not be treated as accountless
+if (typeof visit.patientId !== "string" || !visit.patientId.trim()) {
+  throw new Error("The patient profile could not be found.");
+}
 
   const patientSnapshot = await db
     .collection("users")
@@ -83,6 +93,24 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     consultations: consultationResult.records,
     consultationError: consultationResult.error,
   };
+}
+
+export function watchDoctorPatientVisit(visitId, onChange, onError) {
+  if (!visitId) {
+    throw new Error("A visit is required.");
+  }
+
+  return db.collection("visits").doc(visitId).onSnapshot(
+    (snapshot) => {
+      if (!snapshot.exists) {
+        onError(new Error("The selected visit could not be found."));
+        return;
+      }
+
+      onChange({ id: snapshot.id, ...snapshot.data() });
+    },
+    onError,
+  );
 }
 
 async function getPatientDetails(patientId) {
