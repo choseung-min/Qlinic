@@ -8,9 +8,30 @@
 
     <PatientReminders />
 
+    <p v-if="CLINIC_TEST_TIME" class="status-message" role="status">
+      Testing clinic hours at {{ CLINIC_TEST_TIME }} Singapore time. Today's visits and appointments still apply.
+    </p>
+
     <p v-if="isInitializingQueue" class="status-message" role="status">
       Checking your queue status...
     </p>
+
+    <section
+      v-else-if="currentVisit && !isQueuedVisit"
+      class="card queue-card joined-queue-card"
+      aria-labelledby="queue-title"
+    >
+      <div>
+        <div class="queue-heading">
+          <div class="queue-title-group">
+            <h2 id="queue-title">Today's visit</h2>
+            <span class="status-badge" :class="visitStatusClass">{{ visitStatusLabel }}</span>
+          </div>
+        </div>
+        <p class="queue-note" role="status">{{ visitStatusMessage }}</p>
+        <p v-if="queueError" class="error-message" role="alert">{{ queueError }}</p>
+      </div>
+    </section>
 
     <section
       v-else-if="currentVisit"
@@ -24,6 +45,7 @@
             <span class="status-badge" :class="String(currentVisit.visitStatus || '').toLowerCase().replaceAll(' ', '-')">{{ currentVisit.visitStatus }}</span>
           </div>
           <button
+            v-if="canLeaveQueue"
             class="leave-button"
             :disabled="isLeaving"
             type="button"
@@ -79,13 +101,22 @@
       <div>
         <h2 id="queue-title">Not currently in the queue</h2>
         <p>Join the walk-in queue remotely, no need to wait at the clinic.</p>
+        <p v-if="hasAppointmentToday" class="queue-note" role="alert">
+          {{ WALK_IN_MESSAGES['appointment-today'] }}
+        </p>
+        <p v-else-if="isLoadingWalkInAppointments" class="queue-note" role="status">
+          Checking today's appointments...
+        </p>
+        <p v-if="!clinicOpen" class="queue-note" role="status">
+          {{ CLINIC_CLOSED_MESSAGE }}
+        </p>
         <p v-if="queueError" class="error-message" role="alert">
           {{ queueError }}
         </p>
       </div>
 
-      <button :disabled="isJoining" type="button" @click="handleJoinQueue">
-        {{ isJoining ? "Joining..." : "Join Queue" }}
+      <button :disabled="isJoining || !clinicOpen || hasAppointmentToday || isLoadingWalkInAppointments || queueReadFailed" type="button" @click="handleJoinQueue">
+        {{ isJoining ? "Joining..." : clinicOpen ? "Join Queue" : "Clinic Closed" }}
       </button>
     </section>
 
@@ -159,10 +190,20 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { auth , db } from "@/services/firebase";
 import PatientReminders from "@/components/patient/PatientReminders.vue";
+import { CLINIC_CLOSED_MESSAGE, CLINIC_TEST_TIME, getClinicDate, isClinicOpen } from "@/utils/clinicHours";
+import {
+  QUEUED_VISIT_STATUSES,
+  WALK_IN_MESSAGES,
+  canPatientLeaveVisit,
+  getVisitBlockCode,
+  getPatientQueueErrorMessage,
+  hasBookedAppointmentToday,
+} from "@/utils/walkInEligibility";
 import {
   joinWalkInQueue,
   leaveWalkInQueue,
   watchActiveWalkInVisit,
+  watchPatientAppointments,
   watchWaitingWalkIns,
 } from "@/services/queueService";
 
@@ -174,11 +215,45 @@ const isLoadingAppointments = ref(true);
 const isInitializingQueue = ref(true);
 const upcomingAppointments = ref([]);
 const currentVisit = ref(null);
+const walkInAppointments = ref([]);
+const isLoadingWalkInAppointments = ref(true);
+const queueReadFailed = ref(false);
 const waitingVisits = ref([]);
 const appointmentsError = ref("");
 const queueError = ref("");
 const doctorAvailability = ref(null);
 const clockTick = ref(Date.now());
+const clinicOpen = computed(() => isClinicOpen(new Date(clockTick.value)));
+const hasAppointmentToday = computed(() => hasBookedAppointmentToday(
+  walkInAppointments.value, getClinicDate(new Date(clockTick.value)),
+));
+const isQueuedVisit = computed(() => QUEUED_VISIT_STATUSES.has(currentVisit.value?.visitStatus));
+const canLeaveQueue = computed(() => canPatientLeaveVisit(currentVisit.value, auth.currentUser?.uid));
+const visitStatusLabel = computed(() => {
+  if (currentVisit.value?.visitStatus === "Awaiting Medicine" &&
+      currentVisit.value?.medicineStatus === "Ready for Collection") {
+    return "Ready for Collection";
+  }
+  return currentVisit.value?.visitStatus || "Registered";
+});
+const visitStatusClass = computed(() => visitStatusLabel.value.toLowerCase().replaceAll(" ", "-"));
+const visitStatusMessage = computed(() => {
+  switch (visitStatusLabel.value) {
+    case "Completed":
+      return WALK_IN_MESSAGES["visit-completed-today"];
+    case "In Consultation":
+      return "You're seeing the doctor now.";
+    case "Awaiting Medicine":
+      return "Please wait for your medicine to be ready.";
+    case "Awaiting Medicine Collection":
+    case "Ready for Collection":
+      return "Please collect your medicine at reception.";
+    default:
+      return WALK_IN_MESSAGES["walk-in-already-used"];
+  }
+});
+let clinicHoursTimer;
+let stopWalkInAppointmentsListener;
 let stopActiveVisitListener;
 let stopWaitingQueueListener;
 let stopDoctorAvailabilityListener;
@@ -351,6 +426,7 @@ function openAppointment(appointmentId) {
 }
 
 function handleQueueListenerError(error) {
+  queueReadFailed.value = true;
   console.error(
     "Unable to load queue information:",
     error.queueOperation,
@@ -358,10 +434,7 @@ function handleQueueListenerError(error) {
     error.message,
     error,
   );
-  queueError.value =
-    error.code === "permission-denied"
-      ? `Queue information is not available (${error.queueOperation || "unknown operation"}: ${error.code}).`
-      : `Unable to load queue information (${error.queueOperation || "unknown operation"}: ${error.code || "unknown error"}).`;
+  queueError.value = getPatientQueueErrorMessage(error, "read");
   isInitializingQueue.value = false;
 }
 
@@ -452,21 +525,31 @@ function toDate(value) {
 }
 
 async function handleJoinQueue() {
+  if (isJoining.value || isInitializingQueue.value || isLoadingWalkInAppointments.value || queueReadFailed.value) return;
   queueError.value = "";
+  clockTick.value = Date.now();
+
+  if (!clinicOpen.value) {
+    queueError.value = CLINIC_CLOSED_MESSAGE;
+    return;
+  }
 
   if (!auth.currentUser?.uid) {
     queueError.value = "Please sign in before joining the queue.";
     return;
   }
 
+  if (currentVisit.value || hasAppointmentToday.value) {
+    queueError.value = currentVisit.value
+      ? WALK_IN_MESSAGES[getVisitBlockCode(currentVisit.value)] : WALK_IN_MESSAGES["appointment-today"];
+    return;
+  }
+
   isJoining.value = true;
 
   try {
-    const visit = await joinWalkInQueue(auth.currentUser.uid);
-    currentVisit.value = visit;
-    isInitializingQueue.value = false;
-    startWaitingQueueListener(visit.visitDate);
-    startDoctorAvailabilityListener(visit.doctorId);
+    // Let the live listener display the latest status, including staff updates.
+    await joinWalkInQueue(auth.currentUser.uid);
   } catch (error) {
     console.error(
       "Unable to join the walk-in queue:",
@@ -475,21 +558,15 @@ async function handleJoinQueue() {
       error.message,
       error,
     );
-    queueError.value =
-      error.code === "duplicate-booking"
-        ? "You are already in today's walk-in queue."
-        : error.code === "already-in-queue"
-          ? "You are already in today's queue (for example, a checked-in appointment)."
-        : error.code === "permission-denied"
-          ? `You do not have permission to join the queue (${error.queueOperation || "unknown operation"}).`
-          : `Unable to join the queue (${error.queueOperation || "unknown operation"}: ${error.code || "unknown error"}).`;
+    queueError.value = error.code === "clinic-closed"
+      ? CLINIC_CLOSED_MESSAGE : getPatientQueueErrorMessage(error);
   } finally {
     isJoining.value = false;
   }
 }
 
 async function handleLeaveQueue() {
-  if (!auth.currentUser?.uid || !window.confirm("Leave today's queue?")) {
+  if (isLeaving.value || !canLeaveQueue.value || !window.confirm("Leave today's queue?")) {
     return;
   }
 
@@ -497,9 +574,8 @@ async function handleLeaveQueue() {
   isLeaving.value = true;
 
   try {
+    // The live listener owns the current visit; it may have advanced meanwhile.
     await leaveWalkInQueue(auth.currentUser.uid);
-    currentVisit.value = null;
-    waitingVisits.value = [];
   } catch (error) {
     console.error(
       "Unable to leave the walk-in queue:",
@@ -508,21 +584,30 @@ async function handleLeaveQueue() {
       error.message,
       error,
     );
-    queueError.value =
-      error.code === "permission-denied"
-        ? "You do not have permission to leave the queue."
-        : "Unable to leave the queue. Please try again.";
+    queueError.value = getPatientQueueErrorMessage(error, "leave");
   } finally {
     isLeaving.value = false;
   }
 }
 
 onMounted(() => {
+  clockTick.value = Date.now();
+  clinicHoursTimer = window.setInterval(() => {
+    clockTick.value = Date.now();
+  }, 1_000);
   stopAuthListener = auth.onAuthStateChanged((user) => {
+    stopWalkInAppointmentsListener?.();
     stopActiveVisitListener?.();
     stopWaitingQueueListener?.();
     stopDoctorAvailabilityListener?.();
     clearInterval(breakRefreshTimer);
+    currentVisit.value = null;
+    waitingVisits.value = [];
+    walkInAppointments.value = [];
+    queueReadFailed.value = !user;
+    isInitializingQueue.value = Boolean(user);
+    isLoadingWalkInAppointments.value = Boolean(user);
+    queueError.value = "";
 
     if (!user) {
       patientName.value = "there";
@@ -536,11 +621,17 @@ onMounted(() => {
     console.log("Queue auth user:", user.uid);
     loadPatientProfile(user);
     loadUpcomingAppointments(user.uid);
+    stopWalkInAppointmentsListener = watchPatientAppointments(user.uid, (appointments) => {
+      walkInAppointments.value = appointments;
+      isLoadingWalkInAppointments.value = false;
+    }, handleQueueListenerError);
     startActiveVisitListener(user.uid);
   });
 });
 
 onUnmounted(() => {
+  stopWalkInAppointmentsListener?.();
+  clearInterval(clinicHoursTimer);
   stopAuthListener?.();
   stopActiveVisitListener?.();
   stopWaitingQueueListener?.();
@@ -737,12 +828,14 @@ onUnmounted(() => {
 }
 
 .status-badge.late,
-.status-badge.awaiting-medicine {
+.status-badge.awaiting-medicine,
+.status-badge.awaiting-medicine-collection {
   background: var(--color-warning-soft);
   color: var(--color-warning);
 }
 
-.status-badge.completed {
+.status-badge.completed,
+.status-badge.ready-for-collection {
   background: var(--color-success-soft);
   color: var(--color-success);
 }
