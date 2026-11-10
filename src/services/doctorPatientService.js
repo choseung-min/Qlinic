@@ -15,17 +15,40 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     throw new Error("You are not authorized to view this patient.");
   }
 
-  if (visit.visitStatus !== "Called") {
-    const error = new Error(
-      "This patient must be called by staff before you can view their information or start consultation.",
-    );
-    error.code = "visit-not-called";
-    throw error;
+// staff must call the patient before the doctor can view their information
+// allow view access during an ongoing consultation as well
+if (!["Called", "In Consultation"].includes(visit.visitStatus)) {
+  const error = new Error(
+    "This patient must be called by staff before you can view their information or start consultation.",
+  );
+  error.code = "visit-not-called";
+  throw error;
+}
+
+// accountless walk-ins do not have a users/{patientId} document
+// their information comes from the assigned visit instead
+if (visit.patientId == null) {
+  if (
+    String(visit.visitType || "").toLowerCase() !== "walk-in" ||
+    typeof visit.patientName !== "string" ||
+    !visit.patientName.trim()
+  ) {
+    throw new Error("The patient profile could not be found.");
   }
 
-  if (!visit.patientId) {
-    throw new Error("You are not authorized to view this patient.");
-  }
+  return {
+    visit,
+    appointment: null,
+    patient: { displayName: visit.patientName },
+    consultations: [],
+    consultationError: null,
+  };
+}
+
+// a supplied but invalid patient ID must not be treated as accountless
+if (typeof visit.patientId !== "string" || !visit.patientId.trim()) {
+  throw new Error("The patient profile could not be found.");
+}
 
   const patientSnapshot = await db
     .collection("users")

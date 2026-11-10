@@ -431,37 +431,6 @@
                     selectedVisit.visitStatus,
                   )
                 "
-                type="button"
-                @click="runAction('to-consultation', true)"
-              >
-                Move to in consultation
-              </button>
-              <button
-                v-if="selectedVisit.visitStatus === 'In Consultation'"
-                type="button"
-                @click="runAction('to-medicine', true)"
-              >
-                Move to awaiting medicine
-              </button>
-              <button
-                v-if="
-                  [
-                    'Awaiting Medicine',
-                    'Awaiting Medicine Collection',
-                    'Ready for Collection',
-                  ].includes(selectedVisit.visitStatus)
-                "
-                type="button"
-                @click="runAction('to-completed')"
-              >
-                Mark as completed
-              </button>
-              <button
-                v-if="
-                  ['Waiting', 'Called', 'Late'].includes(
-                    selectedVisit.visitStatus,
-                  )
-                "
                 class="danger-button"
                 type="button"
                 @click="deleteVisit"
@@ -487,7 +456,6 @@ import {
   changeQueueStatus,
   checkInAppointment,
   deleteStaffVisit,
-  updateStaffVisitStatus,
 } from "@/services/staffVisitService";
 import {
   getAvailableDoctorsWithLoad,
@@ -777,29 +745,6 @@ function closeVisitActions() {
   actionError.value = "";
 }
 
-async function runAction(action, requiresConfirmation = false) {
-  const visit = selectedVisit.value;
-  if (!visit) return;
-
-  if (
-    requiresConfirmation &&
-    !window.confirm(`Are you sure you want to move ${visit.patientName}?`)
-  ) {
-    return;
-  }
-
-  try {
-    await updateStaffVisitStatus(visit.id, visit.visitStatus, action);
-    closeVisitActions();
-  } catch (error) {
-    console.error("Unable to update visit status.", error);
-    actionError.value =
-      error.code === "permission-denied"
-        ? "You do not have permission to update this patient."
-        : error.message || "Unable to update this patient.";
-  }
-}
-
 // Story 4: late / absent / arrived
 async function runQueueAction(action, requiresConfirmation = false) {
   const visit = selectedVisit.value;
@@ -883,7 +828,7 @@ async function checkInAppointmentForQueue(appointment) {
 async function callNextPatient(queue) {
   if (queue.called) {
     visitsError.value =
-      `${queue.doctor.name}'s called patient must be marked late or moved to in consultation first.`;
+      `${queue.doctor.name}'s called patient must begin consultation with the doctor, or be marked late or absent, before another patient can be called.`;
     return;
   }
 

@@ -305,7 +305,7 @@ export function watchDoctorQueue({ doctorId, visitDate, onChange, onError }) {
         const patientNames = new Map(
           patientSnapshots.map((document) => [
             document.id,
-            document.data()?.displayName || "Patient",
+            document.data()?.displayName || null,
           ]),
         );
 
@@ -342,7 +342,7 @@ export function watchDoctorQueue({ doctorId, visitDate, onChange, onError }) {
             const appointment = appointments.get(visit.appointmentId);
             return {
               ...visit,
-              patientName: patientNames.get(visit.patientId) || "Patient",
+              patientName: patientNames.get(visit.patientId) || visit.patientName || "Patient",
               appointmentTime:
                 visit.appointmentTime || appointment?.appointmentTime || "",
               reasonForVisit:

@@ -331,8 +331,16 @@ export async function startConsultation({ visitId, doctorId }) {
       );
     }
 
+    const accountlessWalkIn = isAccountlessWalkIn(visit);
+    if (
+      !accountlessWalkIn &&
+      (typeof visit.patientId !== "string" || !visit.patientId.trim())
+    ) {
+      throw new Error("The patient profile could not be found.");
+    }
+
     transaction.set(consultationRef, {
-      patientId: visit.patientId,
+      ...(accountlessWalkIn ? {} : { patientId: visit.patientId }),
       visitId,
       doctorId,
       startedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -367,25 +375,53 @@ export async function getConsultationDetails({ consultationId, doctorId }) {
     throw new Error("You are not authorized to view this consultation.");
   }
 
-  const [visitSnapshot, patientSnapshot, doctorSnapshot] = await Promise.all([
+  const [visitSnapshot, doctorSnapshot] = await Promise.all([
     db.collection("visits").doc(consultation.visitId).get(),
-    db.collection("users").doc(consultation.patientId).get(),
     db.collection("doctors").doc(doctorId).get(),
   ]);
 
-  if (!visitSnapshot.exists || !patientSnapshot.exists || !doctorSnapshot.exists) {
+  if (!visitSnapshot.exists || !doctorSnapshot.exists) {
     throw new Error("The consultation references missing application data.");
   }
 
   const visit = { id: visitSnapshot.id, ...visitSnapshot.data() };
-  if (visit.doctorId !== doctorId || visit.patientId !== consultation.patientId) {
+  if (
+    consultation.visitId !== consultationId ||
+    visit.doctorId !== doctorId ||
+    visit.patientId !== consultation.patientId
+  ) {
     throw new Error("The consultation references an unauthorized visit.");
+  }
+
+  let patient;
+  if (isAccountlessWalkIn(visit)) {
+    // accountless consultations have no patientId
+    patient = { displayName: visit.patientName };
+  } else {
+    if (typeof consultation.patientId !== "string" || !consultation.patientId.trim()) {
+      throw new Error("The consultation references missing application data.");
+    }
+    const patientSnapshot = await db
+      .collection("users")
+      .doc(consultation.patientId)
+      .get();
+    if (!patientSnapshot.exists) {
+      throw new Error("The consultation references missing application data.");
+    }
+    patient = { id: patientSnapshot.id, ...patientSnapshot.data() };
   }
 
   return {
     consultation,
     visit,
-    patient: { id: patientSnapshot.id, ...patientSnapshot.data() },
+    patient,
     doctor: { id: doctorSnapshot.id, ...doctorSnapshot.data() },
   };
+}
+
+function isAccountlessWalkIn(visit) {
+  return visit.patientId == null
+    && String(visit.visitType || "").toLowerCase() === "walk-in"
+    && typeof visit.patientName === "string"
+    && visit.patientName.trim().length > 0;
 }
