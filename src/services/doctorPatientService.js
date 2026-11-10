@@ -15,6 +15,18 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     throw new Error("You are not authorized to view this patient.");
   }
 
+  if (visit.visitStatus !== "Called") {
+    const error = new Error(
+      "This patient must be called by staff before you can view their information or start consultation.",
+    );
+    error.code = "visit-not-called";
+    throw error;
+  }
+
+  if (!visit.patientId) {
+    throw new Error("You are not authorized to view this patient.");
+  }
+
   const patientSnapshot = await db
     .collection("users")
     .doc(visit.patientId)
@@ -58,6 +70,24 @@ export async function getDoctorPatientDetails({ visitId, doctorId }) {
     consultations: consultationResult.records,
     consultationError: consultationResult.error,
   };
+}
+
+export function watchDoctorPatientVisit(visitId, onChange, onError) {
+  if (!visitId) {
+    throw new Error("A visit is required.");
+  }
+
+  return db.collection("visits").doc(visitId).onSnapshot(
+    (snapshot) => {
+      if (!snapshot.exists) {
+        onError(new Error("The selected visit could not be found."));
+        return;
+      }
+
+      onChange({ id: snapshot.id, ...snapshot.data() });
+    },
+    onError,
+  );
 }
 
 async function getPatientDetails(patientId) {

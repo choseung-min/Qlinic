@@ -4,7 +4,7 @@
 
     <main class="consultation-page">
       <button class="back-button" type="button" @click="goToPatient">
-        ← Back to Patient Information
+        ← Back to Dashboard
       </button>
 
       <p v-if="isLoading" class="message">Loading consultation...</p>
@@ -267,10 +267,7 @@ function handleMedicationChoice() {
 }
 
 function goToPatient() {
-  router.push({
-    name: "DoctorPatientInformation",
-    params: { visitId: consultation.value.visitId },
-  });
+  router.push({ name: "DoctorMain" });
 }
 
 async function handleLogout() {
