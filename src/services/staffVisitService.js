@@ -50,7 +50,10 @@ export async function reassignVisit(visitId, fromDoctorId, doctor) {
     const visit = visitSnapshot.data();
     const stillOnSameDoctor = (visit.doctorId || "") === (fromDoctorId || "");
 
-    if (!stillOnSameDoctor || !ASSIGNABLE_STATUSES.includes(visit.visitStatus)) {
+    if (
+      !stillOnSameDoctor ||
+      !ASSIGNABLE_STATUSES.includes(visit.visitStatus)
+    ) {
       return "skipped";
     }
 
@@ -278,7 +281,9 @@ export async function assignVisitDoctor(visitId, doctor) {
     const currentDoctor = doctorSnapshot.data();
 
     if (!ASSIGNABLE_STATUSES.includes(visit.visitStatus)) {
-      throw new Error("Doctors can only be changed before consultation starts.");
+      throw new Error(
+        "Doctors can only be changed before consultation starts.",
+      );
     }
 
     if (
@@ -370,6 +375,7 @@ export async function checkInAppointment(appointmentId) {
       appointmentId,
       patientId: appointment.patientId,
       doctorId: appointment.doctorId,
+      doctorName: appointment.doctorName || "",
       visitType: "appointment",
       visitStatus: "Waiting",
       patientName: appointment.patientName || "",
